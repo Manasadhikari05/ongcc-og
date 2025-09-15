@@ -1,6 +1,9 @@
 import { Applicant } from '../types/applicant';
 
-const API_BASE_URL = '/api';
+// Use environment variable for API URL, fallback to '/api' for local development
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+console.log('🔗 API Base URL:', API_BASE_URL);
 
 // Helper function to get auth token
 const getAuthToken = (): string | null => {

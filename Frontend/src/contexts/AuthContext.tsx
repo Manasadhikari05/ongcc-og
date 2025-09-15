@@ -19,6 +19,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<Omit<User, 'password'> | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Use environment variable for API URL, fallback to '/api' for local development
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+  
+  console.log('🔗 Auth API Base URL:', API_BASE_URL);
 
   useEffect(() => {
     // Check for stored auth data on app load
@@ -44,7 +49,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const verifyToken = async (authToken: string) => {
     try {
-      const response = await fetch('/api/auth/verify', {
+      const response = await fetch(`${API_BASE_URL}/auth/verify`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
@@ -64,7 +69,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
