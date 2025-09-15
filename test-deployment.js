@@ -7,8 +7,8 @@ console.log('🧪 ONGC ATS - Deployment Test Script');
 console.log('=====================================\n');
 
 // Configuration - UPDATE THESE URLs
-const BACKEND_URL = 'https://your-render-backend.onrender.com';
-const FRONTEND_URL = 'https://your-vercel-app.vercel.app';
+const BACKEND_URL = 'https://your-render-backend.onrender.com'; // UPDATE WITH YOUR RENDER URL
+const FRONTEND_URL = 'https://ongcc-og-cto7.vercel.app';
 
 // Test functions
 function makeRequest(url, options = {}) {
