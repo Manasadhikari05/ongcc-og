@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+dotenv.config();
 const mongoose = require('mongoose');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
@@ -13,15 +14,12 @@ const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const morgan = require('morgan');
 
-// SQL Database imports
-const { testConnection, syncDatabase } = require('./config/database');
-const { initializeSQLUsers } = require('./utils/authHelpers');
+// SQL Database imports (removed for Mongo-only mode)
+const useMongoAuth = (process.env.AUTH_BACKEND || '').toLowerCase() === 'mongo';
 const { router: authRouter, authenticateToken, requireRole } = require('./routes/auth');
 
 // MongoDB imports
 const Applicant = require('./models/Applicant');
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -64,7 +62,7 @@ app.use(limiter);
 // Stricter rate limiting for authentication routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 20, // Increased from 5 to 20 for testing
   message: {
     error: 'Too many authentication attempts, please try again later.'
   },
@@ -186,23 +184,7 @@ const createEmailTransporter = () => {
   return transporter;
 };
 
-// Define schemas and models (always available)
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  name: { type: String, required: true },
-  role: { 
-    type: String, 
-    enum: ['hr_manager', 'admin', 'viewer'], 
-    default: 'hr_manager' 
-  },
-  department: { type: String, default: 'Human Resources' },
-  employeeId: { type: String, required: true, unique: true },
-  isActive: { type: Boolean, default: true },
-  lastLogin: Date,
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
+// Define schemas and models (applicant model only here; User model lives in models/MongoUser.js when AUTH_BACKEND=mongo)
 
 const applicantSchema = new mongoose.Schema({
   submissionTimestamp: Date,
@@ -251,30 +233,12 @@ const applicantSchema = new mongoose.Schema({
   processedBy: String
 });
 
-const User = mongoose.model('User', userSchema);
+const MongoUser = useMongoAuth ? require('./models/MongoUser') : null;
 
-// SQL Database connection
+// SQL Database connection disabled in Mongo-only mode
 const connectSQLDB = async () => {
-  try {
-    console.log('🗄️  Initializing SQL database connection...');
-    
-    // First, create database if it doesn't exist
-    const { createDatabaseIfNotExists } = require('./config/database');
-    await createDatabaseIfNotExists();
-    
-    // Then test connection
-    const isConnected = await testConnection();
-    if (isConnected) {
-      await syncDatabase();
-      await initializeSQLUsers();
-      console.log('✅ SQL Database setup completed');
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('❌ SQL Database connection failed:', error.message);
-    return false;
-  }
+  console.log('🗄️  SQL auth disabled (Mongo-only mode)');
+  return false;
 };
 
 // MongoDB connection with fallback to in-memory storage
@@ -302,22 +266,21 @@ const connectDB = async () => {
     
     await initializeMongoUsers();
   } catch (error) {
-    console.warn('⚠️  MongoDB connection failed, using in-memory storage:', error.message);
-    console.log('💾 Server running with in-memory storage (data will not persist)');
-    await initializeInMemoryUsers();
+    console.error('❌  MongoDB connection failed. Server requires MongoDB in Mongo-only mode.');
+    throw error;
   }
 };
 
 // Initialize users for MongoDB
 const initializeMongoUsers = async () => {
   try {
-    const userCount = await User.countDocuments();
+    const userCount = await MongoUser.countDocuments();
     
     if (userCount === 0) {
       const defaultUsers = [
         {
           email: 'hr@ongc.co.in',
-          password: await bcrypt.hash('password123', 10),
+          password: 'password123',
           name: 'HR Manager',
           role: 'hr_manager',
           department: 'Human Resources',
@@ -326,7 +289,7 @@ const initializeMongoUsers = async () => {
         },
         {
           email: 'admin@ongc.co.in',
-          password: await bcrypt.hash('admin123', 10),
+          password: 'admin123',
           name: 'System Administrator',
           role: 'admin',
           department: 'IT',
@@ -335,7 +298,7 @@ const initializeMongoUsers = async () => {
         }
       ];
       
-      await User.insertMany(defaultUsers);
+      await MongoUser.create(defaultUsers);
       console.log('Default users created successfully');
     }
   } catch (error) {
@@ -343,121 +306,47 @@ const initializeMongoUsers = async () => {
   }
 };
 
-// Initialize users for in-memory storage
-const initializeInMemoryUsers = async () => {
-  try {
-    // Hash passwords for in-memory users
-    users[0].password = await bcrypt.hash('password123', 10);
-    users[1].password = await bcrypt.hash('admin123', 10);
-    console.log('In-memory users initialized successfully');
-  } catch (error) {
-    console.error('Error initializing in-memory users:', error);
-  }
-};
+// In-memory users are not used in Mongo-only mode
 
 // Note: authenticateToken and requireRole are imported from routes/auth.js
 //const fs = require('fs/promises');
 //const path = require('path');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const fontkit= require('@pdf-lib/fontkit');
-function cleanText(text) {
-  return text.replace(/[\u0900-\u097F\/]+/g, '');
+// Removed cleanText function - it was stripping Hindi characters
+// function cleanText(text) {
+//   return text.replace(/[\u0900-\u097F\/]+/g, '');
+// }
+
+// Import bilingual formatter utility
+const { formatApplicantData } = require('./utils/bilingualFormatter');
+
+// Import new PDF generator
+const { createONGCApplicationForm } = require('./utils/pdfGenerator');
+
+// Function to format applicant data with bilingual strings for PDF template
+function formatApplicantDataForPDF(applicantData) {
+  console.log('🔤 Original applicant data:', JSON.stringify(applicantData, null, 2));
+  
+  const formattedData = formatApplicantData(applicantData);
+  
+  console.log('🔤 Final formatted data:', JSON.stringify(formattedData, null, 2));
+  return formattedData;
 }
-const coords = {
-  name: [77, 720],
-  age: [240, 718],
-  reg: [460, 720],
-  gender: [90, 698],
-  category: [290, 700],
-  address: [90, 678],
-  mobile: [128, 658],
-  email: [330, 658],
-  father: [235, 637],
-  father_occupation: [290, 618],
-  'father-phone': [128, 602],
-  course: [295, 508],
-  semester: [200, 492],
-  cgpa: [245, 478],
-  percentage: [500, 478],
-  college: [220, 458],
-  date: [460, 440], // optional
-};
+// Old coordinate mapping removed - now using new PDF generator
 // Authentication routes are handled by authRouter
-// Function to fill PDF form with applicant data
+// Function to create PDF form with applicant data using the new generator
 const fillPDFForm = async (applicantData, registrationNumber) => {
     try {
-        console.log('📄 Filling PDF form with applicant data:', applicantData);
-        const templatePath = path.join(__dirname, 'templates', 'template.pdf');
-        const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
-
-        // Check if template exists
-        if (!fs.existsSync(templatePath)) {
-            console.warn('PDF template not found at:', templatePath);
-            return null;
-        }
-
-        // Read the template PDF
-        const templateBytes = fs.readFileSync(templatePath);
-        const pdfDoc = await PDFDocument.load(templateBytes);
-        const fontBytes = fs.readFileSync(fontPath);
-        pdfDoc.registerFontkit(fontkit);
-        const customFont = await pdfDoc.embedFont(fontBytes);
-        const page = pdfDoc.getPages()[0];
-
-        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        const fontSize = 12;
-
-
-        const setFieldValue = (fieldName, value) => {
-            if (value === undefined || value === null) {
-                console.warn(`Field "${fieldName}" is undefined or null, skipping.`);
-                return;
-            }
-            try{
-              value=cleanText(String(value));
-            }
-            catch(e){
-              console.error(`Error cleaning text for field "${fieldName}":`, e);
-            }
-            const coord = coords[fieldName];
-            if (!coord) {
-                console.warn(`No coordinates defined for field "${fieldName}"`);
-                return;
-            }
-
-            const [x, y] = coord;
-            const text = value ? String(value).trim() : '';
-
-            page.drawText(text, {
-                x,
-                y,
-                size: fontSize,
-                customFont,
-                color: rgb(0, 0, 0),
-            });
-        };
-
-        setFieldValue('name', applicantData.name);
-        setFieldValue('email', applicantData.email);
-        setFieldValue('mobile', applicantData.mobile);
-        setFieldValue('age', applicantData.age);
-        setFieldValue('gender', applicantData.gender);
-        setFieldValue('category', applicantData.category);
-        setFieldValue('address', applicantData.address);
-        setFieldValue('father', applicantData.father);
-        setFieldValue('father_occupation', applicantData.father_occupation);
-        setFieldValue('college', applicantData.college);
-        setFieldValue('course', applicantData.course);
-        setFieldValue('semester', applicantData.semester);
-        setFieldValue('cgpa', applicantData.cgpa);
-        setFieldValue('percentage', applicantData.percentage);
-        setFieldValue('reg', applicantData.reg);
-
-
-        return await pdfDoc.save();
+        console.log('📄 Creating ONGC application form with applicant data:', applicantData);
+        
+        // Use the new PDF generator to create the form from scratch
+        const pdfBytes = await createONGCApplicationForm(applicantData, registrationNumber);
+        
+        return pdfBytes;
         
     } catch (error) {
-        console.error('Error filling PDF form:', error);
+        console.error('Error creating PDF form:', error);
         return null;
     }
 };
@@ -534,24 +423,26 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
           // Create mock applicant data from email recipient
           // In a real implementation, you'd pass the full applicant data
           const data = {
+            // Standardized to match pdfGenerator formatter expectations
             name: applicantData.name,
             age: applicantData.age,
             gender: applicantData.gender,
             category: applicantData.category,
-            reg: registrationNumber,
             address: applicantData.address,
-            mobile: applicantData.mobileNo,
+            mobileNo: applicantData.mobileNo || applicantData.mobile,
             email: applicantData.email,
-            father: applicantData.fatherMotherName,
-            father_occupation: applicantData.fatherMotherOccupation,
-            course: applicantData.areasOfTraining,
-            semester: applicantData.presentSemester,
-            cgpa: applicantData.lastSemesterSGPA,
-            percentage: applicantData.percentageIn10Plus2,
-            college: applicantData.presentInstitute
-
-
-        }
+            fatherMotherName: applicantData.fatherMotherName || applicantData.father,
+            fatherMotherOccupation: applicantData.fatherMotherOccupation || applicantData.father_occupation,
+            presentInstitute: applicantData.presentInstitute || applicantData.college,
+            areasOfTraining: applicantData.areasOfTraining || applicantData.course,
+            presentSemester: applicantData.presentSemester || applicantData.semester,
+            lastSemesterSGPA: applicantData.lastSemesterSGPA || applicantData.cgpa,
+            percentageIn10Plus2: applicantData.percentageIn10Plus2 || applicantData.percentage,
+            designation: applicantData.designation,
+            cpf: applicantData.cpf,
+            section: applicantData.section,
+            location: applicantData.location
+          }
                 console.log('LMAO4');
 
           // Fill the PDF form
@@ -789,14 +680,13 @@ app.get('/api/approved', authenticateToken, (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  const mongoStatus = mongoose.connection.readyState === 1 ? 'MongoDB Connected' : 'In-Memory Storage';
+  const mongoStatus = mongoose.connection.readyState === 1 ? 'MongoDB Connected' : 'Disconnected';
   const emailConfigured = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
   
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
     mongodb: mongoStatus,
-    sql: 'Available for Authentication',
     email: emailConfigured ? 'Configured' : 'Not Configured'
   });
 });
@@ -925,7 +815,7 @@ const startServer = async () => {
       console.log('   HR Manager: hr@ongc.co.in / password123');
       console.log('   Admin: admin@ongc.co.in / admin123');
       console.log('   Viewer: viewer@ongc.co.in / viewer123');
-      console.log('📝 Note: MongoDB handles applicant data, SQL handles authentication');
+      console.log('📝 Note: MongoDB handles ALL data (Mongo-only mode)');
     });
 
     // Graceful shutdown

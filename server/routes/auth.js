@@ -9,6 +9,7 @@ const {
   updateUser,
   isSQLConnected 
 } = require('../utils/authHelpers');
+const useMongoAuth = (process.env.AUTH_BACKEND || '').toLowerCase() === 'mongo';
 
 // Middleware for authentication
 const authenticateToken = async (req, res, next) => {
@@ -386,12 +387,19 @@ router.get('/users', authenticateToken, requireRole(['admin']), async (req, res)
   console.log('👤 [USERS] Request by admin:', req.user.email);
   
   try {
-    const SQLUser = require('../models/User');
-    console.log('🔍 [USERS] Fetching all users from database...');
-    const users = await SQLUser.findAll({
-      attributes: { exclude: ['password'] },
-      order: [['createdAt', 'DESC']]
-    });
+    let users;
+    if (useMongoAuth) {
+      const MongoUser = require('../models/MongoUser');
+      console.log('🔍 [USERS] Fetching all users from MongoDB...');
+      users = await MongoUser.find().sort({ createdAt: -1 }).exec();
+    } else {
+      const SQLUser = require('../models/User');
+      console.log('🔍 [USERS] Fetching all users from SQL...');
+      users = await SQLUser.findAll({
+        attributes: { exclude: ['password'] },
+        order: [['createdAt', 'DESC']]
+      });
+    }
     
     console.log('✅ [USERS] Found', users.length, 'users');
     

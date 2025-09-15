@@ -132,3 +132,23 @@ backup_*/
 # Application specific
 server/logs/
 server/uploads/
+# Node
+node_modules/
+*.log
+
+# Env
+server/.env
+
+# Builds
+dist/
+.build/
+
+# OS
+.DS_Store
+
+# App data
+server/logs/
+server/uploads/
+server/server/database.sqlite
+server/database.sqlite
+Frontend/dist/

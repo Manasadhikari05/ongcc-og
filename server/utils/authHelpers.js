@@ -1,6 +1,10 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const SQLUser = require('../models/User');
+
+// Determine auth backend first, then conditionally require models
+const useMongoAuth = (process.env.AUTH_BACKEND || '').toLowerCase() === 'mongo';
+const SQLUser = useMongoAuth ? null : require('../models/User');
+const MongoUser = useMongoAuth ? require('../models/MongoUser') : null;
 
 // Generate JWT token
 const generateToken = (userId, role) => {
@@ -41,7 +45,7 @@ const findUserByEmail = async (email) => {
   console.log('🔍 [USER] Finding user by email:', email);
   
   try {
-    const user = await SQLUser.findByEmail(email);
+    const user = useMongoAuth ? await MongoUser.findByEmail(email) : await SQLUser.findByEmail(email);
     console.log('👤 [USER] User found:', user ? 'Yes' : 'No');
     
     if (user) {
@@ -66,7 +70,7 @@ const findUserById = async (id) => {
   console.log('🔍 [USER] Finding user by ID:', id);
   
   try {
-    const user = await SQLUser.findById(id);
+    const user = useMongoAuth ? await MongoUser.findById(id) : await SQLUser.findById(id);
     console.log('👤 [USER] User found:', user ? 'Yes' : 'No');
     
     if (user) {
@@ -97,6 +101,10 @@ const createUser = async (userData) => {
   });
   
   try {
+    if (useMongoAuth) {
+      const user = await MongoUser.create(userData);
+      return user;
+    }
     const user = await SQLUser.create(userData);
     console.log('✅ [USER] User created successfully:', {
       id: user.id,
@@ -116,6 +124,10 @@ const updateUser = async (id, updateData) => {
   console.log('📝 [USER] Update data:', updateData);
   
   try {
+    if (useMongoAuth) {
+      const updated = await MongoUser.findOneAndUpdate({ _id: id }, updateData, { new: true });
+      return updated;
+    }
     const user = await SQLUser.findById(id);
     if (!user) {
       console.log('❌ [USER] User not found for update');
@@ -147,7 +159,7 @@ const updateUser = async (id, updateData) => {
 
 // Initialize default users in SQL database
 const initializeSQLUsers = async () => {
-  console.log('👥 [INIT] Initializing SQL users');
+  console.log('👥 [INIT] Initializing default users for', useMongoAuth ? 'MongoDB' : 'SQL');
   
   try {
     const defaultUsers = [
@@ -195,7 +207,7 @@ const initializeSQLUsers = async () => {
       }
     }
     
-    console.log('✅ [INIT] SQL Users initialization completed');
+    console.log('✅ [INIT] Users initialization completed');
   } catch (error) {
     console.error('❌ [INIT] Error initializing SQL users:', error);
   }
