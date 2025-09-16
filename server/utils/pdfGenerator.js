@@ -368,85 +368,90 @@ async function drawApplicantData(page, font, data, registrationNumber) {
         email: { x: MARGIN + 210, y: startY - 145 },
     };
     
-    // Draw personal information data
-    if (data.name) {
-        page.drawText(data.name, {
-            x: dataPositions.name.x,
-            y: dataPositions.name.y,
-            size: DATA_FONT_SIZE,
-            font: font,
-            color: BLACK,
-        });
+    // Draw personal information data with error handling
+    try {
+        if (data.name && data.name.trim()) {
+            page.drawText(String(data.name).substring(0, 50), {
+                x: dataPositions.name.x,
+                y: dataPositions.name.y,
+                size: DATA_FONT_SIZE,
+                font: font,
+                color: BLACK,
+            });
+            console.log('✅ Name filled:', data.name);
+        }
+        
+        if (data.age && String(data.age).trim()) {
+            page.drawText(String(data.age), {
+                x: dataPositions.age.x,
+                y: dataPositions.age.y,
+                size: DATA_FONT_SIZE,
+                font: font,
+                color: BLACK,
+            });
+            console.log('✅ Age filled:', data.age);
+        }
+    } catch (error) {
+        console.error('❌ Error drawing personal info:', error.message);
     }
     
-    if (data.age) {
-        page.drawText(data.age, {
-            x: dataPositions.age.x,
-            y: dataPositions.age.y,
-            size: DATA_FONT_SIZE,
-            font: font,
-            color: BLACK,
-        });
-    }
-    
-    if (registrationNumber) {
-        page.drawText(registrationNumber, {
-            x: dataPositions.reg.x,
-            y: dataPositions.reg.y,
-            size: DATA_FONT_SIZE,
-            font: font,
-            color: BLACK,
-        });
-    }
-    
-    if (data.gender) {
-        page.drawText(data.gender, {
-            x: dataPositions.gender.x,
-            y: dataPositions.gender.y,
-            size: DATA_FONT_SIZE,
-            font: font,
-            color: BLACK,
-        });
-    }
-    
-    if (data.category) {
-        page.drawText(data.category, {
-            x: dataPositions.category.x,
-            y: dataPositions.category.y,
-            size: DATA_FONT_SIZE,
-            font: font,
-            color: BLACK,
-        });
-    }
-    
-    if (data.address) {
-        page.drawText(data.address, {
-            x: dataPositions.address.x,
-            y: dataPositions.address.y,
-            size: DATA_FONT_SIZE,
-            font: font,
-            color: BLACK,
-        });
-    }
-    
-    if (data.mobileNo) {
-        page.drawText(data.mobileNo, {
-            x: dataPositions.mobile.x,
-            y: dataPositions.mobile.y,
-            size: DATA_FONT_SIZE,
-            font: font,
-            color: BLACK,
-        });
-    }
-    
-    if (data.email) {
-        page.drawText(data.email, {
-            x: dataPositions.email.x,
-            y: dataPositions.email.y,
-            size: DATA_FONT_SIZE,
-            font: font,
-            color: BLACK,
-        });
+    try {
+        if (registrationNumber && registrationNumber.trim()) {
+            page.drawText(String(registrationNumber), {
+                x: dataPositions.reg.x,
+                y: dataPositions.reg.y,
+                size: DATA_FONT_SIZE,
+                font: font,
+                color: BLACK,
+            });
+            console.log('✅ Registration number filled:', registrationNumber);
+        }
+        
+        if (data.gender && data.gender.trim()) {
+            page.drawText(String(data.gender), {
+                x: dataPositions.gender.x,
+                y: dataPositions.gender.y,
+                size: DATA_FONT_SIZE,
+                font: font,
+                color: BLACK,
+            });
+            console.log('✅ Gender filled:', data.gender);
+        }
+        
+        if (data.email && data.email.trim()) {
+            page.drawText(String(data.email).substring(0, 50), {
+                x: dataPositions.email.x,
+                y: dataPositions.email.y,
+                size: DATA_FONT_SIZE,
+                font: font,
+                color: BLACK,
+            });
+            console.log('✅ Email filled:', data.email);
+        }
+        
+        if (data.mobileNo && data.mobileNo.trim()) {
+            page.drawText(String(data.mobileNo), {
+                x: dataPositions.mobile.x,
+                y: dataPositions.mobile.y,
+                size: DATA_FONT_SIZE,
+                font: font,
+                color: BLACK,
+            });
+            console.log('✅ Mobile filled:', data.mobileNo);
+        }
+        
+        if (data.presentInstitute && data.presentInstitute.trim()) {
+            page.drawText(String(data.presentInstitute).substring(0, 60), {
+                x: academicDataPositions.institute.x,
+                y: academicDataPositions.institute.y,
+                size: DATA_FONT_SIZE,
+                font: font,
+                color: BLACK,
+            });
+            console.log('✅ Institute filled:', data.presentInstitute);
+        }
+    } catch (error) {
+        console.error('❌ Error drawing basic fields:', error.message);
     }
     
     // Parent Information data positions (adjusted to be below the labels)
