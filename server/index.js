@@ -788,17 +788,40 @@ app.get('/api/approved', authenticateToken, (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  const mongoStatus = mongoose.connection.readyState === 1 ? 'MongoDB Connected' : 'Disconnected';
+  const mongoStatus = mongoose.connection.readyState === 1 ? 'MongoDB Connected' : 'In-Memory Storage';
   const emailConfigured = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+  
+  // Check if template files exist
+  const templatePath = path.join(__dirname, 'templates', 'template.pdf');
+  const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
+  const templateExists = fs.existsSync(templatePath);
+  const fontExists = fs.existsSync(fontPath);
+  
+  let templateSize = 0;
+  if (templateExists) {
+    try {
+      const stats = fs.statSync(templatePath);
+      templateSize = stats.size;
+    } catch (e) {}
+  }
   
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
     mongodb: mongoStatus,
-    email: emailConfigured ? 'Configured' : 'Not Configured'
+    sql: 'Available for Authentication',
+    email: emailConfigured ? 'Configured' : 'Not Configured',
+    template: {
+      exists: templateExists,
+      path: templatePath,
+      size: templateSize
+    },
+    font: {
+      exists: fontExists,
+      path: fontPath
+    }
   });
 });
-
 // Test email endpoint (no authentication required)
 app.post('/api/test-email', async (req, res) => {
   try {
