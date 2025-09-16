@@ -948,6 +948,154 @@ app.get('/api/health', (req, res) => {
     }
   });
 });
+// Test PDF generation endpoint (no authentication required)
+app.post('/api/test-pdf', async (req, res) => {
+  try {
+    const { applicantData, registrationNumber } = req.body;
+    
+    console.log('📄 Test PDF generation request received:');
+    console.log('   📝 Applicant Data:', applicantData);
+    console.log('   🔢 Registration Number:', registrationNumber);
+    
+    // Generate PDF
+    const pdfBuffer = await fillPDFForm(applicantData, registrationNumber);
+    
+    if (pdfBuffer) {
+      // Send PDF as response
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="ONGC_Test_Form.pdf"');
+      res.send(pdfBuffer);
+      
+      console.log('✅ Test PDF generated and sent successfully');
+    } else {
+      console.log('❌ Failed to generate PDF');
+      res.status(500).json({
+        success: false,
+        message: 'Failed to generate PDF'
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Test PDF generation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'PDF generation error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Test PDF email endpoint (no authentication required) 
+app.post('/api/test-pdf-email', async (req, res) => {
+  try {
+    const { applicantData, registrationNumber, to } = req.body;
+    
+    console.log('📧 Test PDF email request received:');
+    console.log('   📝 Applicant Data:', applicantData);
+    console.log('   🔢 Registration Number:', registrationNumber);
+    console.log('   📮 To Email:', to);
+    
+    // Validate required fields
+    if (!to || !applicantData || !registrationNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: to, applicantData, registrationNumber'
+      });
+    }
+    
+    // Check if email configuration is available
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      return res.status(500).json({
+        success: false,
+        message: 'Email configuration not found. Please configure EMAIL_USER and EMAIL_PASS in environment variables.'
+      });
+    }
+    
+    // Generate PDF
+    const pdfBuffer = await fillPDFForm(applicantData, registrationNumber);
+    
+    // Create transporter
+    const transporter = createEmailTransporter();
+    
+    // Email options
+    const mailOptions = {
+      from: `"ONGC Dehradun - SAIL" <${process.env.EMAIL_USER}>`,
+      to: to,
+      subject: 'ONGC Internship Application Confirmation - Test',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h2 style="color: #d32f2f;">ONGC Internship Application</h2>
+            <h3 style="color: #1976d2;">Application Confirmation - Test</h3>
+          </div>
+          
+          <div style="background-color: #f5f5f5; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+            <h3 style="color: #333; margin-top: 0;">Dear ${applicantData.name || 'Applicant'},</h3>
+            <p>This is a test email confirming your ONGC internship application.</p>
+            <p><strong>Registration Number:</strong> ${registrationNumber}</p>
+            <p><strong>Email:</strong> ${applicantData.email || 'N/A'}</p>
+            <p><strong>Course:</strong> ${applicantData.course || 'N/A'}</p>
+          </div>
+          
+          <div style="background-color: #e3f2fd; padding: 15px; border-radius: 5px; border-left: 4px solid #1976d2;">
+            <p style="margin: 0; color: #1976d2;"><strong>Note:</strong> Please find your filled application form attached as PDF.</p>
+          </div>
+          
+          <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <p style="color: #666; font-size: 12px;">This is an automated test message from ONGC Dehradun.</p>
+          </div>
+        </div>
+      `,
+      attachments: []
+    };
+    
+    // Add PDF attachment
+    if (pdfBuffer) {
+      mailOptions.attachments.push({
+        filename: 'ONGC_Internship_Application_Form_Filled.pdf',
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      });
+    } else {
+      // Fallback to template if available
+      const templatePath = path.join(__dirname, 'templates', 'template.pdf');
+      if (fs.existsSync(templatePath)) {
+        mailOptions.attachments.push({
+          filename: 'ONGC_Internship_Application_Form.pdf',
+          path: templatePath,
+          contentType: 'application/pdf'
+        });
+      }
+    }
+    
+    // Send email
+    const info = await transporter.sendMail(mailOptions);
+    
+    console.log('✅ Test PDF email sent successfully:', {
+      messageId: info.messageId,
+      to: to,
+      pdfGenerated: !!pdfBuffer,
+      attachmentCount: mailOptions.attachments.length
+    });
+    
+    res.json({
+      success: true,
+      message: 'Test PDF email sent successfully',
+      messageId: info.messageId,
+      pdfGenerated: !!pdfBuffer,
+      attachmentCount: mailOptions.attachments.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Test PDF email error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'PDF email sending error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 // Test email endpoint (no authentication required)
 app.post('/api/test-email', async (req, res) => {
   try {
