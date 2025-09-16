@@ -13,6 +13,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const morgan = require('morgan');
+const puppeteer = require('puppeteer');
 
 // SQL Database imports (removed for Mongo-only mode)
 const useMongoAuth = (process.env.AUTH_BACKEND || '').toLowerCase() === 'mongo';
@@ -367,90 +368,215 @@ const coords = {
   date: [460, 440], // optional
 };
 
-// Function to fill PDF form with applicant data using coordinates
-const fillPDFForm = async (applicantData, registrationNumber) => {
+// Function to create a simple HTML version of the form with data
+const createHTMLForm = (applicantData, registrationNumber) => {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>ONGC Internship Application Form</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .form-container { max-width: 800px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .section { margin-bottom: 20px; border: 1px solid #ccc; padding: 15px; }
+        .section-title { font-weight: bold; font-size: 16px; margin-bottom: 10px; color: #333; }
+        .field-row { display: flex; margin-bottom: 10px; }
+        .field { flex: 1; margin-right: 20px; }
+        .field-label { font-weight: bold; color: #555; }
+        .field-value { border-bottom: 1px solid #333; min-height: 20px; padding: 2px; }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <div class="header">
+            <h1>ONGC INTERNSHIP APPLICATION FORM</h1>
+            <h2>ओएनजीसी इंटर्नशिप आवेदन फॉर्म</h2>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">Personal Information / व्यक्तिगत जानकारी</div>
+            <div class="field-row">
+                <div class="field">
+                    <div class="field-label">नाम/Name:</div>
+                    <div class="field-value">${applicantData.name || ''}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">उम्र/Age:</div>
+                    <div class="field-value">${applicantData.age || ''}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">पंजीकरण संख्या/Registration No.:</div>
+                    <div class="field-value">${registrationNumber || ''}</div>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field">
+                    <div class="field-label">लिंग/Gender:</div>
+                    <div class="field-value">${applicantData.gender || ''}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">श्रेणी/Category:</div>
+                    <div class="field-value">${applicantData.category || ''}</div>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field">
+                    <div class="field-label">पता/Address:</div>
+                    <div class="field-value">${applicantData.address || ''}</div>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field">
+                    <div class="field-label">मोबाइल नंबर/Mobile No.:</div>
+                    <div class="field-value">${applicantData.mobile || ''}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">ई-मेल/E-mail:</div>
+                    <div class="field-value">${applicantData.email || ''}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">Parent Information / अभिभावक जानकारी</div>
+            <div class="field-row">
+                <div class="field">
+                    <div class="field-label">पिता/माता का नाम/Father/Mother's Name:</div>
+                    <div class="field-value">${applicantData.father || ''}</div>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field">
+                    <div class="field-label">पिता/माता का व्यवसाय/Father/Mother's Occupation:</div>
+                    <div class="field-value">${applicantData.father_occupation || ''}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">Academic Information / शैक्षणिक विवरण</div>
+            <div class="field-row">
+                <div class="field">
+                    <div class="field-label">वर्तमान पाठ्यक्रम का नाम/Name of Present Course:</div>
+                    <div class="field-value">${applicantData.course || ''}</div>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field">
+                    <div class="field-label">वर्तमान सेमेस्टर/Present Semester:</div>
+                    <div class="field-value">${applicantData.semester || ''}</div>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field">
+                    <div class="field-label">पिछला सेमेस्टर SGPA/Last Semester SGPA:</div>
+                    <div class="field-value">${applicantData.cgpa || ''}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">10+2 में प्रतिशत/%age in 10+2:</div>
+                    <div class="field-value">${applicantData.percentage || ''}%</div>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field">
+                    <div class="field-label">संस्थान का नाम/Name of Institute:</div>
+                    <div class="field-value">${applicantData.college || ''}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">Declaration / घोषणा</div>
+            <p>I certify that all the information provided above is true and correct to the best of my knowledge.</p>
+            <p>मैं प्रमाणित करता/करती हूँ कि उपरोक्त दी गई सभी जानकारी मेरी जानकारी के अनुसार सत्य और सही है।</p>
+        </div>
+    </div>
+</body>
+</html>
+    `;
+};
+
+// Function to generate PDF from HTML using Puppeteer
+const generatePDFFromHTML = async (applicantData, registrationNumber) => {
+    let browser = null;
     try {
-        console.log('📄 Filling PDF form with applicant data:', applicantData);
-        const templatePath = path.join(__dirname, 'templates', 'template.pdf');
-        const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
-
-        // Check if template exists
-        if (!fs.existsSync(templatePath)) {
-            console.warn('PDF template not found at:', templatePath);
-            return null;
-        }
-
-        // Read the template PDF
-        const templateBytes = fs.readFileSync(templatePath);
-        const pdfDoc = await PDFDocument.load(templateBytes);
+        console.log('📄 Generating PDF from HTML with data:', applicantData);
         
-        // Load custom font if available
-        let customFont;
-        if (fs.existsSync(fontPath)) {
-            const fontBytes = fs.readFileSync(fontPath);
-            pdfDoc.registerFontkit(fontkit);
-            customFont = await pdfDoc.embedFont(fontBytes);
-        } else {
-            customFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        }
+        // Create HTML content
+        const htmlContent = createHTMLForm(applicantData, registrationNumber);
         
-        const page = pdfDoc.getPages()[0];
-        const fontSize = 12;
-
-        const setFieldValue = (fieldName, value) => {
-            if (value === undefined || value === null) {
-                console.warn(`Field "${fieldName}" is undefined or null, skipping.`);
-                return;
+        // Launch browser
+        browser = await puppeteer.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu'
+            ]
+        });
+        
+        const page = await browser.newPage();
+        
+        // Set HTML content
+        await page.setContent(htmlContent, {
+            waitUntil: 'networkidle0'
+        });
+        
+        // Generate PDF
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: {
+                top: '20mm',
+                right: '15mm',
+                bottom: '20mm',
+                left: '15mm'
             }
-            
-            try {
-                value = cleanText(String(value));
-            } catch (e) {
-                console.error(`Error cleaning text for field "${fieldName}":`, e);
-            }
-            
-            const coord = coords[fieldName];
-            if (!coord) {
-                console.warn(`No coordinates defined for field "${fieldName}"`);
-                return;
-            }
-
-            const [x, y] = coord;
-            const text = value ? String(value).trim() : '';
-
-            if (text) {
-                page.drawText(text, {
-                    x,
-                    y,
-                    size: fontSize,
-                    font: customFont,
-                    color: rgb(0, 0, 0),
-                });
-                console.log(`✅ Field "${fieldName}" filled with: ${text}`);
-            }
-        };
-
-        // Fill form fields
-        setFieldValue('name', applicantData.name);
-        setFieldValue('email', applicantData.email);
-        setFieldValue('mobile', applicantData.mobile);
-        setFieldValue('age', applicantData.age);
-        setFieldValue('gender', applicantData.gender);
-        setFieldValue('category', applicantData.category);
-        setFieldValue('address', applicantData.address);
-        setFieldValue('father', applicantData.father);
-        setFieldValue('father_occupation', applicantData.father_occupation);
-        setFieldValue('college', applicantData.college);
-        setFieldValue('course', applicantData.course);
-        setFieldValue('semester', applicantData.semester);
-        setFieldValue('cgpa', applicantData.cgpa);
-        setFieldValue('percentage', applicantData.percentage);
-        setFieldValue('reg', applicantData.reg || registrationNumber);
-
-        return await pdfDoc.save();
+        });
+        
+        console.log('✅ PDF generated successfully from HTML');
+        return pdfBuffer;
         
     } catch (error) {
-        console.error('Error filling PDF form:', error);
+        console.error('❌ Error generating PDF from HTML:', error);
+        return null;
+    } finally {
+        if (browser) {
+            await browser.close();
+        }
+    }
+};
+
+// Updated function to handle PDF creation with fallback
+const fillPDFForm = async (applicantData, registrationNumber) => {
+    try {
+        console.log('📄 Starting PDF generation process...');
+        
+        // First try HTML-to-PDF generation
+        const htmlPDF = await generatePDFFromHTML(applicantData, registrationNumber);
+        if (htmlPDF) {
+            console.log('✅ Successfully generated filled PDF from HTML');
+            return htmlPDF;
+        }
+        
+        // Fallback to template PDF if HTML generation fails
+        console.log('📄 HTML generation failed, using template fallback');
+        const templatePath = path.join(__dirname, 'templates', 'template.pdf');
+        
+        if (fs.existsSync(templatePath)) {
+            const templateBytes = fs.readFileSync(templatePath);
+            console.log('✅ Using template PDF as fallback');
+            return templateBytes;
+        }
+        
+        console.log('❌ No template PDF available');
+        return null;
+        
+    } catch (error) {
+        console.error('❌ Error in PDF processing:', error);
         return null;
     }
 };
