@@ -345,6 +345,14 @@ async function drawONGCEmployeeSection(page, font) {
  */
 async function drawApplicantData(page, font, data, registrationNumber) {
     console.log('📝 Drawing applicant data...');
+    console.log('📊 Available data fields:', Object.keys(data || {}));
+    console.log('📊 Sample data values:', {
+        name: data?.name,
+        age: data?.age,
+        gender: data?.gender,
+        email: data?.email,
+        mobileNo: data?.mobileNo
+    });
     
     const startY = PAGE_HEIGHT - MARGIN - 100;
     
