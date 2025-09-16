@@ -95,14 +95,43 @@ app.use(morgan('combined')); // Also log to console
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN ? 
-    process.env.CORS_ORIGIN.split(',') : 
-    ['http://localhost:5173', 'http://localhost:3000'],
+  origin: function (origin, callback) {
+    console.log('🌐 [CORS] Request from origin:', origin);
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = process.env.CORS_ORIGIN ? 
+      process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : 
+      ['http://localhost:5173', 'http://localhost:3000'];
+    
+    console.log('🌐 [CORS] Allowed origins:', allowedOrigins);
+    
+    // Allow all origins if * is specified
+    if (allowedOrigins.includes('*')) {
+      console.log('✅ [CORS] Allowing all origins (wildcard)');
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      console.log('✅ [CORS] Origin allowed:', origin);
+      return callback(null, true);
+    } else {
+      console.log('❌ [CORS] Origin blocked:', origin);
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'X-Requested-With', 'Accept']
 };
 
 app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
 app.use(express.json({ limit: process.env.MAX_FILE_SIZE || '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: process.env.MAX_FILE_SIZE || '10mb' }));
 
