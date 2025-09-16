@@ -433,24 +433,25 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
       text: text || html?.replace(/<[^>]*>/g, ''), // Strip HTML tags for text version
       attachments: []
     };
-    console.log('LMAO');
+    console.log('📎 Processing PDF attachment request...');
     // Add PDF template attachment if requested
     if (attachTemplate) {
-          console.log('LMAO2');
+      console.log('📄 Attachments enabled, checking applicant data...');
+      console.log('📊 Raw applicant data received:', JSON.stringify(applicantData, null, 2));
+      
       // Check if we have applicant data to fill the form
       let pdfBuffer = null;
       
-      // Try to extract applicant data from email content for form filling
-      //if (html && html.includes('Registration number is:')) {
-            console.log('LMAO3');
-
-            try {
-          // Extract registration number from email content
-          const regMatch = html.match(/SAIL-\d{4}-\d{4}/);
-          const registrationNumber = regMatch ? regMatch[0] : '';
-          console.log('ApplicantData', applicantData);
-          // Create mock applicant data from email recipient
-          // In a real implementation, you'd pass the full applicant data
+      try {
+        // Extract registration number from email content
+        const regMatch = html.match(/SAIL-\d{4}-\d{4}/);
+        const registrationNumber = regMatch ? regMatch[0] : '';
+        console.log('🔢 Registration number extracted:', registrationNumber);
+        // Validate that we have applicant data
+        if (!applicantData) {
+          console.log('⚠️  No applicant data provided, using blank template');
+        } else {
+          // Create standardized data object for PDF generator
           const data = {
             // Standardized to match pdfGenerator formatter expectations
             name: applicantData.name,
@@ -472,44 +473,45 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
             section: applicantData.section,
             location: applicantData.location
           }
-                console.log('LMAO4');
+          
+          console.log('🔧 Formatted data for PDF generation:', JSON.stringify(data, null, 2));
 
           // Fill the PDF form
-              
-
-              pdfBuffer = await fillPDFForm(data, registrationNumber);
-              console.log('LMAO5');
-        } catch (error) {
-          console.error('Error creating filled PDF:', error);
+          console.log('📄 Calling PDF generator...');
+          pdfBuffer = await fillPDFForm(data, registrationNumber);
+          console.log('✅ PDF generation completed, buffer size:', pdfBuffer ? pdfBuffer.length : 'null');
         }
-      //}
+      } catch (error) {
+        console.error('❌ Error creating filled PDF:', error);
+        console.error('📊 Error stack:', error.stack);
+      }
       
       if (pdfBuffer) {
-            console.log('LMAO6');
-
+        console.log('📧 Using filled PDF attachment');
         // Use filled PDF
         mailOptions.attachments.push({
-          filename: 'ONGC_Internship_Application_Form2_Filled.pdf',
+          filename: 'ONGC_Internship_Application_Form_Filled.pdf',
           content: pdfBuffer,
-
           contentType: 'application/pdf'
         });
       } else {
         // Fallback to blank template
+        console.log('⚠️  PDF generation failed, using blank template fallback');
         const templatePath = path.join(__dirname, 'templates', 'template.pdf');
         
         try {
           if (fs.existsSync(templatePath)) {
+            console.log('📄 Using blank template from:', templatePath);
             mailOptions.attachments.push({
               filename: 'ONGC_Internship_Application_Form.pdf',
               path: templatePath,
               contentType: 'application/pdf'
             });
           } else {
-            console.warn('Template PDF not found at:', templatePath);
+            console.warn('❌ Template PDF not found at:', templatePath);
           }
         } catch (attachError) {
-          console.error('Error attaching template:', attachError);
+          console.error('❌ Error attaching template:', attachError);
         }
       }
     }
