@@ -69,6 +69,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       
+      console.log('🔐 [AuthContext] Making login request to:', `${API_BASE_URL}/auth/login`);
+      console.log('🔐 [AuthContext] Request body:', credentials);
+      
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: {
@@ -77,15 +80,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         body: JSON.stringify(credentials)
       });
       
+      console.log('🔐 [AuthContext] Response status:', response.status);
+      console.log('🔐 [AuthContext] Response ok:', response.ok);
+      
       const data: AuthResponse = await response.json();
+      console.log('🔐 [AuthContext] Response data:', data);
       
       if (data.success && data.token && data.user) {
+        console.log('✅ [AuthContext] Login successful, setting user and token');
         setToken(data.token);
         setUser(data.user);
         
         // Store in localStorage
         localStorage.setItem('ongc-auth-token', data.token);
         localStorage.setItem('ongc-auth-user', JSON.stringify(data.user));
+        
+        console.log('✅ [AuthContext] User and token stored in localStorage');
+      } else {
+        console.log('❌ [AuthContext] Login failed - missing success, token, or user');
+        console.log('❌ [AuthContext] success:', data.success);
+        console.log('❌ [AuthContext] token:', !!data.token);
+        console.log('❌ [AuthContext] user:', !!data.user);
       }
       
       return data;
