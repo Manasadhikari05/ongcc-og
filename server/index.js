@@ -515,87 +515,81 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
     console.log('📎 Processing PDF attachment request...');
     // Add PDF template attachment if requested
     if (attachTemplate) {
-      console.log('📄 Attachments enabled, checking applicant data...');
-      console.log('📊 Raw applicant data received:', JSON.stringify(applicantData, null, 2));
+      console.log('📄 Filling PDF template with applicant data...');
+      console.log('📄 Applicant data received:', applicantData);
       
-      // Check if we have applicant data to fill the form
+      const templatePath = path.join(__dirname, 'templates', 'template.pdf');
       let pdfBuffer = null;
       
       try {
-        // Extract registration number from email content
-        const regMatch = html.match(/SAIL-\d{4}-\d{4}/);
-        const registrationNumber = regMatch ? regMatch[0] : '';
-        console.log('🔢 Registration number extracted:', registrationNumber);
-        // Validate that we have applicant data
-        if (!applicantData) {
-          console.log('⚠️  No applicant data provided, using blank template');
-        } else {
-          // Create data object mapped to coordinate-based PDF system
+        if (fs.existsSync(templatePath)) {
+          console.log('✅ Template PDF found at:', templatePath);
+          
+          // Extract registration number from email content
+          const regMatch = html.match(/SAIL-\d{4}-\d{4}/);
+          const registrationNumber = regMatch ? regMatch[0] : 'SAIL-2025-0001';
+          console.log('🔢 Registration number:', registrationNumber);
+          
+          // Prepare data for PDF filling
           const data = {
-            name: applicantData.name || 'Test Student Name',
-            age: String(applicantData.age || '22'),
-            gender: applicantData.gender || 'Male',
-            category: applicantData.category || 'General',
-            reg: registrationNumber || 'SAIL-2025-0001',
-            address: applicantData.address || 'Test Address, City, State',
-            mobile: applicantData.mobileNo || applicantData.mobile || '9999999999',
-            email: applicantData.email || to,
-            father: applicantData.fatherMotherName || 'Test Parent Name',
-            father_occupation: applicantData.fatherMotherOccupation || 'Service',
-            course: applicantData.areasOfTraining || 'Computer Science Engineering',
-            semester: applicantData.presentSemester || '6th Semester',
-            cgpa: String(applicantData.lastSemesterSGPA || '8.5'),
-            percentage: String(applicantData.percentageIn10Plus2 || '85'),
-            college: applicantData.presentInstitute || 'Test Engineering College'
-          }
+            name: applicantData?.name || 'Student Name',
+            age: String(applicantData?.age || '22'),
+            gender: applicantData?.gender || 'Male',
+            category: applicantData?.category || 'General',
+            reg: registrationNumber,
+            address: applicantData?.address || 'Address',
+            mobile: applicantData?.mobileNo || applicantData?.mobile || '9999999999',
+            email: applicantData?.email || to,
+            father: applicantData?.fatherMotherName || 'Parent Name',
+            father_occupation: applicantData?.fatherMotherOccupation || 'Occupation',
+            course: applicantData?.areasOfTraining || 'Engineering',
+            semester: applicantData?.presentSemester || '6th',
+            cgpa: String(applicantData?.lastSemesterSGPA || '8.5'),
+            percentage: String(applicantData?.percentageIn10Plus2 || '85'),
+            college: applicantData?.presentInstitute || 'Engineering College'
+          };
           
-          console.log('🔧 Formatted data for PDF generation:', JSON.stringify(data, null, 2));
+          console.log('📄 Data prepared for PDF:', data);
           
-          console.log('📄 Final data for PDF:', JSON.stringify(data, null, 2));
-
-          // Fill the PDF form
-          console.log('📄 Calling PDF generator...');
+          // Fill the PDF template
           pdfBuffer = await fillPDFForm(data, registrationNumber);
           
           if (pdfBuffer && pdfBuffer.length > 0) {
-            console.log('✅ PDF generation SUCCESS! Buffer size:', pdfBuffer.length, 'bytes');
+            console.log('✅ PDF filled successfully! Size:', pdfBuffer.length, 'bytes');
+            
+            mailOptions.attachments.push({
+              filename: 'ONGC_Internship_Application_Form_Filled.pdf',
+              content: pdfBuffer,
+              contentType: 'application/pdf'
+            });
           } else {
-            console.log('❌ PDF generation failed, using blank template');
-            pdfBuffer = null;
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error creating filled PDF:', error);
-        console.error('📊 Error stack:', error.stack);
-      }
-      
-      if (pdfBuffer) {
-        console.log('📧 Using filled PDF attachment');
-        // Use filled PDF
-        mailOptions.attachments.push({
-          filename: 'ONGC_Internship_Application_Form_Filled.pdf',
-          content: pdfBuffer,
-          contentType: 'application/pdf'
-        });
-      } else {
-        // Fallback to blank template
-        console.log('⚠️  PDF generation failed, using blank template fallback');
-        const templatePath = path.join(__dirname, 'templates', 'template.pdf');
-        
-        try {
-          if (fs.existsSync(templatePath)) {
-            console.log('📄 Using blank template from:', templatePath);
+            console.log('⚠️  PDF filling failed, using blank template');
+            
             mailOptions.attachments.push({
               filename: 'ONGC_Internship_Application_Form.pdf',
               path: templatePath,
               contentType: 'application/pdf'
             });
-          } else {
-            console.warn('❌ Template PDF not found at:', templatePath);
           }
-        } catch (attachError) {
-          console.error('❌ Error attaching template:', attachError);
+          
+        } else {
+          console.error('❌ Template PDF not found at:', templatePath);
         }
+      } catch (error) {
+        console.error('❌ Error processing PDF:', error);
+        
+        // Fallback to blank template if anything fails
+        try {
+          mailOptions.attachments.push({
+            filename: 'ONGC_Internship_Application_Form.pdf',
+            path: templatePath,
+            contentType: 'application/pdf'
+          });
+        } catch (fallbackError) {
+          console.error('❌ Fallback also failed:', fallbackError);
+        }
+      }
+    }
       }
     }
     
