@@ -231,21 +231,31 @@ hereby cautioned that any dissemination, distribution or copying of this communi
         // Get API base URL from environment
         const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
         
+        console.log('📧 [EmailModal] Sending email API request:');
+        console.log('📧 [EmailModal] API URL:', `${API_BASE_URL}/send-email`);
+        console.log('📧 [EmailModal] Recipient:', recipient.email);
+        console.log('📧 [EmailModal] Attach Template:', attachTemplate);
+        console.log('📧 [EmailModal] Applicant Data:', recipient);
+        
+        const requestBody = {
+          to: recipient.email,
+          subject: subject,
+          html: `<pre style="font-family: Arial, sans-serif; white-space: pre-wrap; font-size: 12px;">${emailContent}</pre>`,
+          text: emailContent,
+          attachTemplate: attachTemplate,
+          applicantData: recipient,
+          registrationNumber: generateRegistrationNumber(currentSerial),
+        };
+        
+        console.log('📧 [EmailModal] Request body:', requestBody);
+        
         const response = await fetch(`${API_BASE_URL}/send-email`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${localStorage.getItem('ongc-auth-token')}`
           },
-          body: JSON.stringify({
-            to: recipient.email,
-            subject: subject,
-            html: `<pre style="font-family: Arial, sans-serif; white-space: pre-wrap; font-size: 12px;">${emailContent}</pre>`,
-            text: emailContent,
-            attachTemplate: attachTemplate,
-            applicantData: recipient,
-            registrationNumber: generateRegistrationNumber(currentSerial),
-          })
+          body: JSON.stringify(requestBody)
         });
 
         const result = await response.json();
