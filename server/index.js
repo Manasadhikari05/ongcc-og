@@ -338,44 +338,119 @@ const initializeMongoUsers = async () => {
 // In-memory users are not used in Mongo-only mode
 
 // Note: authenticateToken and requireRole are imported from routes/auth.js
-//const fs = require('fs/promises');
-//const path = require('path');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
-const fontkit= require('@pdf-lib/fontkit');
-// Removed cleanText function - it was stripping Hindi characters
-// function cleanText(text) {
-//   return text.replace(/[\u0900-\u097F\/]+/g, '');
-// }
+const fontkit = require('@pdf-lib/fontkit');
 
-// Import bilingual formatter utility
-const { formatApplicantData } = require('./utils/bilingualFormatter');
-
-// Import new PDF generator
-const { createONGCApplicationForm } = require('./utils/pdfGenerator');
-
-// Function to format applicant data with bilingual strings for PDF template
-function formatApplicantDataForPDF(applicantData) {
-  console.log('🔤 Original applicant data:', JSON.stringify(applicantData, null, 2));
-  
-  const formattedData = formatApplicantData(applicantData);
-  
-  console.log('🔤 Final formatted data:', JSON.stringify(formattedData, null, 2));
-  return formattedData;
+// Clean text function to remove problematic characters
+function cleanText(text) {
+  return text.replace(/[\u0900-\u097F\/]+/g, '');
 }
-// Old coordinate mapping removed - now using new PDF generator
-// Authentication routes are handled by authRouter
-// Function to create PDF form with applicant data using the new generator
+
+// Coordinate mapping for PDF form fields
+const coords = {
+  name: [77, 720],
+  age: [240, 718],
+  reg: [460, 720],
+  gender: [90, 698],
+  category: [290, 700],
+  address: [90, 678],
+  mobile: [128, 658],
+  email: [330, 658],
+  father: [235, 637],
+  father_occupation: [290, 618],
+  'father-phone': [128, 602],
+  course: [295, 508],
+  semester: [200, 492],
+  cgpa: [245, 478],
+  percentage: [500, 478],
+  college: [220, 458],
+  date: [460, 440], // optional
+};
+
+// Function to fill PDF form with applicant data using coordinates
 const fillPDFForm = async (applicantData, registrationNumber) => {
     try {
-        console.log('📄 Creating ONGC application form with applicant data:', applicantData);
+        console.log('📄 Filling PDF form with applicant data:', applicantData);
+        const templatePath = path.join(__dirname, 'templates', 'template.pdf');
+        const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
+
+        // Check if template exists
+        if (!fs.existsSync(templatePath)) {
+            console.warn('PDF template not found at:', templatePath);
+            return null;
+        }
+
+        // Read the template PDF
+        const templateBytes = fs.readFileSync(templatePath);
+        const pdfDoc = await PDFDocument.load(templateBytes);
         
-        // Use the new PDF generator to create the form from scratch
-        const pdfBytes = await createONGCApplicationForm(applicantData, registrationNumber);
+        // Load custom font if available
+        let customFont;
+        if (fs.existsSync(fontPath)) {
+            const fontBytes = fs.readFileSync(fontPath);
+            pdfDoc.registerFontkit(fontkit);
+            customFont = await pdfDoc.embedFont(fontBytes);
+        } else {
+            customFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        }
         
-        return pdfBytes;
+        const page = pdfDoc.getPages()[0];
+        const fontSize = 12;
+
+        const setFieldValue = (fieldName, value) => {
+            if (value === undefined || value === null) {
+                console.warn(`Field "${fieldName}" is undefined or null, skipping.`);
+                return;
+            }
+            
+            try {
+                value = cleanText(String(value));
+            } catch (e) {
+                console.error(`Error cleaning text for field "${fieldName}":`, e);
+            }
+            
+            const coord = coords[fieldName];
+            if (!coord) {
+                console.warn(`No coordinates defined for field "${fieldName}"`);
+                return;
+            }
+
+            const [x, y] = coord;
+            const text = value ? String(value).trim() : '';
+
+            if (text) {
+                page.drawText(text, {
+                    x,
+                    y,
+                    size: fontSize,
+                    font: customFont,
+                    color: rgb(0, 0, 0),
+                });
+                console.log(`✅ Field "${fieldName}" filled with: ${text}`);
+            }
+        };
+
+        // Fill form fields
+        setFieldValue('name', applicantData.name);
+        setFieldValue('email', applicantData.email);
+        setFieldValue('mobile', applicantData.mobile);
+        setFieldValue('age', applicantData.age);
+        setFieldValue('gender', applicantData.gender);
+        setFieldValue('category', applicantData.category);
+        setFieldValue('address', applicantData.address);
+        setFieldValue('father', applicantData.father);
+        setFieldValue('father_occupation', applicantData.father_occupation);
+        setFieldValue('college', applicantData.college);
+        setFieldValue('course', applicantData.course);
+        setFieldValue('semester', applicantData.semester);
+        setFieldValue('cgpa', applicantData.cgpa);
+        setFieldValue('percentage', applicantData.percentage);
+        setFieldValue('reg', applicantData.reg || registrationNumber);
+
+        return await pdfDoc.save();
         
     } catch (error) {
-        console.error('Error creating PDF form:', error);
+        console.error('Error filling PDF form:', error);
         return null;
     }
 };
@@ -455,110 +530,38 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
         if (!applicantData) {
           console.log('⚠️  No applicant data provided, using blank template');
         } else {
-          // Create standardized data object for PDF generator with comprehensive field mapping
+          // Create data object mapped to coordinate-based PDF system
           const data = {
-            // Personal Information - try multiple possible field names
-            name: applicantData.name || applicantData.fullName || applicantData.studentName || '',
-            age: String(applicantData.age || applicantData.ageInYears || ''),
-            gender: applicantData.gender || applicantData.sex || '',
-            category: applicantData.category || applicantData.caste || applicantData.reservation || '',
-            address: applicantData.address || applicantData.fullAddress || applicantData.permanentAddress || '',
-            mobileNo: applicantData.mobileNo || applicantData.mobile || applicantData.phoneNumber || applicantData.contactNumber || '',
-            email: applicantData.email || applicantData.emailId || applicantData.emailAddress || '',
-            
-            // Parent Information
-            fatherMotherName: applicantData.fatherMotherName || applicantData.fatherName || applicantData.motherName || applicantData.parentName || applicantData.guardianName || '',
-            fatherMotherOccupation: applicantData.fatherMotherOccupation || applicantData.fatherOccupation || applicantData.parentOccupation || applicantData.guardianOccupation || '',
-            
-            // Academic Information
-            presentInstitute: applicantData.presentInstitute || applicantData.college || applicantData.institution || applicantData.university || '',
-            areasOfTraining: applicantData.areasOfTraining || applicantData.course || applicantData.branch || applicantData.specialization || applicantData.department || '',
-            presentSemester: applicantData.presentSemester || applicantData.semester || applicantData.currentSemester || '',
-            lastSemesterSGPA: String(applicantData.lastSemesterSGPA || applicantData.sgpa || applicantData.cgpa || applicantData.gpa || ''),
-            percentageIn10Plus2: String(applicantData.percentageIn10Plus2 || applicantData.percentage || applicantData.marks || ''),
-            
-            // ONGC Employee Information (if applicable)
-            designation: applicantData.designation || applicantData.position || applicantData.jobTitle || '',
-            cpf: applicantData.cpf || applicantData.employeeId || applicantData.staffId || '',
-            section: applicantData.section || applicantData.dept || applicantData.division || '',
-            location: applicantData.location || applicantData.workLocation || applicantData.office || '',
-            
-            // Additional fields that might be in Excel data
-            submissionTimestamp: applicantData.submissionTimestamp,
-            instructionAcknowledged: applicantData.instructionAcknowledged,
-            trainingAcknowledgement: applicantData.trainingAcknowledgement,
-            email2: applicantData.email2,
-            mentorDetailsAvailable: applicantData.mentorDetailsAvailable,
-            guardianOccupationDetails: applicantData.guardianOccupationDetails,
-            mentorCPF: applicantData.mentorCPF,
-            mentorName: applicantData.mentorName,
-            mentorDesignation: applicantData.mentorDesignation,
-            mentorSection: applicantData.mentorSection,
-            mentorLocation: applicantData.mentorLocation,
-            mentorEmail: applicantData.mentorEmail,
-            mentorMobileNo: applicantData.mentorMobileNo,
-            preferenceCriteria: applicantData.preferenceCriteria,
-            referredBy: applicantData.referredBy
+            name: applicantData.name || 'Test Student Name',
+            age: String(applicantData.age || '22'),
+            gender: applicantData.gender || 'Male',
+            category: applicantData.category || 'General',
+            reg: registrationNumber || 'SAIL-2025-0001',
+            address: applicantData.address || 'Test Address, City, State',
+            mobile: applicantData.mobileNo || applicantData.mobile || '9999999999',
+            email: applicantData.email || to,
+            father: applicantData.fatherMotherName || 'Test Parent Name',
+            father_occupation: applicantData.fatherMotherOccupation || 'Service',
+            course: applicantData.areasOfTraining || 'Computer Science Engineering',
+            semester: applicantData.presentSemester || '6th Semester',
+            cgpa: String(applicantData.lastSemesterSGPA || '8.5'),
+            percentage: String(applicantData.percentageIn10Plus2 || '85'),
+            college: applicantData.presentInstitute || 'Test Engineering College'
           }
           
           console.log('🔧 Formatted data for PDF generation:', JSON.stringify(data, null, 2));
           
-          // FORCE TEST DATA FOR NOW - This will definitely work
-          console.log('🔧 FORCING test data to ensure PDF generation works');
-          data.name = applicantData?.name || 'Test Student Name';
-          data.age = String(applicantData?.age || '22');
-          data.gender = applicantData?.gender || 'Male';
-          data.email = applicantData?.email || to;
-          data.mobileNo = applicantData?.mobileNo || applicantData?.mobile || '9999999999';
-          data.address = applicantData?.address || 'Test Address, City, State';
-          data.category = applicantData?.category || 'General';
-          data.fatherMotherName = applicantData?.fatherMotherName || 'Test Parent Name';
-          data.fatherMotherOccupation = applicantData?.fatherMotherOccupation || 'Service';
-          data.presentInstitute = applicantData?.presentInstitute || 'Test Engineering College';
-          data.areasOfTraining = applicantData?.areasOfTraining || 'Computer Science Engineering';
-          data.presentSemester = applicantData?.presentSemester || '6th Semester';
-          data.lastSemesterSGPA = String(applicantData?.lastSemesterSGPA || '8.5');
-          data.percentageIn10Plus2 = String(applicantData?.percentageIn10Plus2 || '85%');
-          data.designation = applicantData?.designation || '';
-          data.cpf = applicantData?.cpf || '';
-          data.section = applicantData?.section || '';
-          data.location = applicantData?.location || '';
-          
-          console.log('📄 Final data for PDF (guaranteed to have values):', {
-            name: data.name,
-            email: data.email,
-            age: data.age,
-            institute: data.presentInstitute
-          });
+          console.log('📄 Final data for PDF:', JSON.stringify(data, null, 2));
 
-          // Fill the PDF form with enhanced error handling
-          console.log('📄 Calling PDF generator with guaranteed data...');
-          try {
-            pdfBuffer = await fillPDFForm(data, registrationNumber);
-            if (pdfBuffer && pdfBuffer.length > 0) {
-              console.log('✅ PDF generation SUCCESS! Buffer size:', pdfBuffer.length, 'bytes');
-            } else {
-              throw new Error('PDF buffer is empty or null');
-            }
-          } catch (pdfError) {
-            console.error('❌ PDF generation FAILED:', pdfError.message);
-            console.error('❌ PDF generation stack:', pdfError.stack);
-            
-            // Try simplified PDF generation
-            console.log('🔄 Attempting simplified PDF generation...');
-            try {
-              const simpleData = {
-                name: data.name || 'Student',
-                email: data.email || 'email@example.com',
-                age: data.age || '22',
-                registrationNumber: registrationNumber || 'SAIL-2025-0001'
-              };
-              pdfBuffer = await fillPDFForm(simpleData, registrationNumber);
-              console.log('✅ Simplified PDF generation completed');
-            } catch (simplePdfError) {
-              console.error('❌ Even simplified PDF failed:', simplePdfError.message);
-              pdfBuffer = null;
-            }
+          // Fill the PDF form
+          console.log('📄 Calling PDF generator...');
+          pdfBuffer = await fillPDFForm(data, registrationNumber);
+          
+          if (pdfBuffer && pdfBuffer.length > 0) {
+            console.log('✅ PDF generation SUCCESS! Buffer size:', pdfBuffer.length, 'bytes');
+          } else {
+            console.log('❌ PDF generation failed, using blank template');
+            pdfBuffer = null;
           }
         }
       } catch (error) {
