@@ -478,14 +478,14 @@ async function drawApplicantData(page, font, data, registrationNumber) {
         });
     }
     
-    // Academic Information data positions (adjusted to be below the labels)
+    // Academic Information data positions
     const academicStartY = PAGE_HEIGHT - MARGIN - 350;
     const academicDataPositions = {
         course: { x: MARGIN + 10, y: academicStartY - 55 },
         semester: { x: MARGIN + 10, y: academicStartY - 85 },
-        cgpa: { x: MARGIN + 10, y: academicStartY - 115 },
+        sgpa: { x: MARGIN + 10, y: academicStartY - 115 },
         percentage: { x: MARGIN + 210, y: academicStartY - 115 },
-        college: { x: MARGIN + 10, y: academicStartY - 145 },
+        institute: { x: MARGIN + 10, y: academicStartY - 145 },
     };
     
     // Draw academic information data
@@ -510,9 +510,9 @@ async function drawApplicantData(page, font, data, registrationNumber) {
     }
     
     if (data.lastSemesterSGPA) {
-        page.drawText(String(data.lastSemesterSGPA), {
-            x: academicDataPositions.cgpa.x,
-            y: academicDataPositions.cgpa.y,
+        page.drawText(data.lastSemesterSGPA, {
+            x: academicDataPositions.sgpa.x,
+            y: academicDataPositions.sgpa.y,
             size: DATA_FONT_SIZE,
             font: font,
             color: BLACK,
@@ -520,7 +520,7 @@ async function drawApplicantData(page, font, data, registrationNumber) {
     }
     
     if (data.percentageIn10Plus2) {
-        page.drawText(String(data.percentageIn10Plus2), {
+        page.drawText(data.percentageIn10Plus2, {
             x: academicDataPositions.percentage.x,
             y: academicDataPositions.percentage.y,
             size: DATA_FONT_SIZE,
@@ -531,15 +531,15 @@ async function drawApplicantData(page, font, data, registrationNumber) {
     
     if (data.presentInstitute) {
         page.drawText(data.presentInstitute, {
-            x: academicDataPositions.college.x,
-            y: academicDataPositions.college.y,
+            x: academicDataPositions.institute.x,
+            y: academicDataPositions.institute.y,
             size: DATA_FONT_SIZE,
             font: font,
             color: BLACK,
         });
     }
     
-    // ONGC Employee Information data positions (adjusted to be below the labels)
+    // ONGC Employee Information data positions (if applicable)
     const ongcStartY = PAGE_HEIGHT - MARGIN - 500;
     const ongcDataPositions = {
         designation: { x: MARGIN + 10, y: ongcStartY - 55 },
@@ -548,7 +548,7 @@ async function drawApplicantData(page, font, data, registrationNumber) {
         location: { x: MARGIN + 210, y: ongcStartY - 85 },
     };
     
-    // Draw ONGC employee information data (if available)
+    // Draw ONGC employee information data
     if (data.designation) {
         page.drawText(data.designation, {
             x: ongcDataPositions.designation.x,
@@ -588,6 +588,18 @@ async function drawApplicantData(page, font, data, registrationNumber) {
             color: BLACK,
         });
     }
+    
+    if (data.presentInstitute) {
+        page.drawText(data.presentInstitute, {
+            x: academicDataPositions.institute.x,
+            y: academicDataPositions.institute.y,
+            size: DATA_FONT_SIZE,
+            font: font,
+            color: BLACK,
+        });
+    }
+    
+    console.log('✅ PDF data filling completed successfully');
 }
 
 module.exports = {

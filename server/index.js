@@ -451,27 +451,50 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
         if (!applicantData) {
           console.log('⚠️  No applicant data provided, using blank template');
         } else {
-          // Create standardized data object for PDF generator
+          // Create standardized data object for PDF generator with comprehensive field mapping
           const data = {
-            // Standardized to match pdfGenerator formatter expectations
-            name: applicantData.name,
-            age: applicantData.age,
-            gender: applicantData.gender,
-            category: applicantData.category,
-            address: applicantData.address,
-            mobileNo: applicantData.mobileNo || applicantData.mobile,
-            email: applicantData.email,
-            fatherMotherName: applicantData.fatherMotherName || applicantData.father,
-            fatherMotherOccupation: applicantData.fatherMotherOccupation || applicantData.father_occupation,
-            presentInstitute: applicantData.presentInstitute || applicantData.college,
-            areasOfTraining: applicantData.areasOfTraining || applicantData.course,
-            presentSemester: applicantData.presentSemester || applicantData.semester,
-            lastSemesterSGPA: applicantData.lastSemesterSGPA || applicantData.cgpa,
-            percentageIn10Plus2: applicantData.percentageIn10Plus2 || applicantData.percentage,
-            designation: applicantData.designation,
-            cpf: applicantData.cpf,
-            section: applicantData.section,
-            location: applicantData.location
+            // Personal Information - try multiple possible field names
+            name: applicantData.name || applicantData.fullName || applicantData.studentName || '',
+            age: String(applicantData.age || applicantData.ageInYears || ''),
+            gender: applicantData.gender || applicantData.sex || '',
+            category: applicantData.category || applicantData.caste || applicantData.reservation || '',
+            address: applicantData.address || applicantData.fullAddress || applicantData.permanentAddress || '',
+            mobileNo: applicantData.mobileNo || applicantData.mobile || applicantData.phoneNumber || applicantData.contactNumber || '',
+            email: applicantData.email || applicantData.emailId || applicantData.emailAddress || '',
+            
+            // Parent Information
+            fatherMotherName: applicantData.fatherMotherName || applicantData.fatherName || applicantData.motherName || applicantData.parentName || applicantData.guardianName || '',
+            fatherMotherOccupation: applicantData.fatherMotherOccupation || applicantData.fatherOccupation || applicantData.parentOccupation || applicantData.guardianOccupation || '',
+            
+            // Academic Information
+            presentInstitute: applicantData.presentInstitute || applicantData.college || applicantData.institution || applicantData.university || '',
+            areasOfTraining: applicantData.areasOfTraining || applicantData.course || applicantData.branch || applicantData.specialization || applicantData.department || '',
+            presentSemester: applicantData.presentSemester || applicantData.semester || applicantData.currentSemester || '',
+            lastSemesterSGPA: String(applicantData.lastSemesterSGPA || applicantData.sgpa || applicantData.cgpa || applicantData.gpa || ''),
+            percentageIn10Plus2: String(applicantData.percentageIn10Plus2 || applicantData.percentage || applicantData.marks || ''),
+            
+            // ONGC Employee Information (if applicable)
+            designation: applicantData.designation || applicantData.position || applicantData.jobTitle || '',
+            cpf: applicantData.cpf || applicantData.employeeId || applicantData.staffId || '',
+            section: applicantData.section || applicantData.dept || applicantData.division || '',
+            location: applicantData.location || applicantData.workLocation || applicantData.office || '',
+            
+            // Additional fields that might be in Excel data
+            submissionTimestamp: applicantData.submissionTimestamp,
+            instructionAcknowledged: applicantData.instructionAcknowledged,
+            trainingAcknowledgement: applicantData.trainingAcknowledgement,
+            email2: applicantData.email2,
+            mentorDetailsAvailable: applicantData.mentorDetailsAvailable,
+            guardianOccupationDetails: applicantData.guardianOccupationDetails,
+            mentorCPF: applicantData.mentorCPF,
+            mentorName: applicantData.mentorName,
+            mentorDesignation: applicantData.mentorDesignation,
+            mentorSection: applicantData.mentorSection,
+            mentorLocation: applicantData.mentorLocation,
+            mentorEmail: applicantData.mentorEmail,
+            mentorMobileNo: applicantData.mentorMobileNo,
+            preferenceCriteria: applicantData.preferenceCriteria,
+            referredBy: applicantData.referredBy
           }
           
           console.log('🔧 Formatted data for PDF generation:', JSON.stringify(data, null, 2));
