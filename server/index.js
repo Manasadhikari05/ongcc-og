@@ -498,31 +498,171 @@ const createHTMLForm = (applicantData, registrationNumber) => {
     `;
 };
 
-// Function to generate PDF from HTML using Puppeteer
+// Function to create a structured PDF using PDF-lib
+const createStructuredPDF = async (applicantData, registrationNumber) => {
+    try {
+        console.log('📄 Creating structured PDF with data:', applicantData);
+        
+        // Create a new PDF document
+        const pdfDoc = await PDFDocument.create();
+        const page = pdfDoc.addPage([595.28, 841.89]); // A4 size
+        
+        // Embed fonts
+        const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        
+        const { width, height } = page.getSize();
+        
+        // Helper function to draw text
+        const drawText = (text, x, y, options = {}) => {
+            page.drawText(String(text || ''), {
+                x,
+                y,
+                size: options.size || 12,
+                font: options.bold ? helveticaBoldFont : helveticaFont,
+                color: rgb(0, 0, 0),
+                ...options
+            });
+        };
+        
+        // Draw header
+        drawText('ONGC INTERNSHIP APPLICATION FORM', 150, height - 50, { size: 16, bold: true });
+        drawText('ओएनजीसी इंटर्नशिप आवेदन फॉर्म', 150, height - 75, { size: 14, bold: true });
+        
+        let yPosition = height - 120;
+        
+        // Personal Information Section
+        drawText('Personal Information / व्यक्तिगत जानकारी', 50, yPosition, { size: 14, bold: true });
+        yPosition -= 30;
+        
+        // Draw form fields in a structured manner
+        const fieldWidth = 200;
+        const col1X = 50;
+        const col2X = 300;
+        
+        drawText('Name/नाम:', col1X, yPosition, { bold: true });
+        drawText(applicantData.name || '', col1X + 80, yPosition);
+        drawText('Age/उम्र:', col2X, yPosition, { bold: true });
+        drawText(applicantData.age || '', col2X + 60, yPosition);
+        yPosition -= 25;
+        
+        drawText('Registration No./पंजीकरण संख्या:', col1X, yPosition, { bold: true });
+        drawText(registrationNumber || '', col1X + 160, yPosition);
+        yPosition -= 25;
+        
+        drawText('Gender/लिंग:', col1X, yPosition, { bold: true });
+        drawText(applicantData.gender || '', col1X + 80, yPosition);
+        drawText('Category/श्रेणी:', col2X, yPosition, { bold: true });
+        drawText(applicantData.category || '', col2X + 80, yPosition);
+        yPosition -= 25;
+        
+        drawText('Address/पता:', col1X, yPosition, { bold: true });
+        drawText(applicantData.address || '', col1X + 80, yPosition);
+        yPosition -= 25;
+        
+        drawText('Mobile/मोबाइल:', col1X, yPosition, { bold: true });
+        drawText(applicantData.mobile || '', col1X + 80, yPosition);
+        drawText('Email/ई-मेल:', col2X, yPosition, { bold: true });
+        drawText(applicantData.email || '', col2X + 60, yPosition);
+        yPosition -= 40;
+        
+        // Parent Information Section
+        drawText('Parent Information / अभिभावक जानकारी', 50, yPosition, { size: 14, bold: true });
+        yPosition -= 30;
+        
+        drawText('Father/Mother Name:', col1X, yPosition, { bold: true });
+        drawText(applicantData.father || '', col1X + 120, yPosition);
+        yPosition -= 25;
+        
+        drawText('Father/Mother Occupation:', col1X, yPosition, { bold: true });
+        drawText(applicantData.father_occupation || '', col1X + 150, yPosition);
+        yPosition -= 40;
+        
+        // Academic Information Section
+        drawText('Academic Information / शैक्षणिक विवरण', 50, yPosition, { size: 14, bold: true });
+        yPosition -= 30;
+        
+        drawText('Course/पाठ्यक्रम:', col1X, yPosition, { bold: true });
+        drawText(applicantData.course || '', col1X + 100, yPosition);
+        yPosition -= 25;
+        
+        drawText('Semester/सेमेस्टर:', col1X, yPosition, { bold: true });
+        drawText(applicantData.semester || '', col1X + 100, yPosition);
+        yPosition -= 25;
+        
+        drawText('SGPA:', col1X, yPosition, { bold: true });
+        drawText(applicantData.cgpa || '', col1X + 50, yPosition);
+        drawText('10+2 %:', col2X, yPosition, { bold: true });
+        drawText((applicantData.percentage || '') + '%', col2X + 50, yPosition);
+        yPosition -= 25;
+        
+        drawText('Institute/संस्थान:', col1X, yPosition, { bold: true });
+        drawText(applicantData.college || '', col1X + 80, yPosition);
+        yPosition -= 40;
+        
+        // Declaration
+        drawText('Declaration / घोषणा', 50, yPosition, { size: 14, bold: true });
+        yPosition -= 25;
+        
+        const declarationText = 'I certify that all the information provided above is true and correct to the best of my knowledge.';
+        drawText(declarationText, 50, yPosition, { size: 10 });
+        yPosition -= 20;
+        
+        const hindiDeclaration = 'मैं प्रमाणित करता/करती हूँ कि उपरोक्त दी गई सभी जानकारी मेरी जानकारी के अनुसार सत्य और सही है।';
+        drawText(hindiDeclaration, 50, yPosition, { size: 10 });
+        
+        console.log('✅ Structured PDF created successfully');
+        return await pdfDoc.save();
+        
+    } catch (error) {
+        console.error('❌ Error creating structured PDF:', error);
+        return null;
+    }
+};
+
+// Function to generate PDF from HTML using Puppeteer (with better error handling)
 const generatePDFFromHTML = async (applicantData, registrationNumber) => {
     let browser = null;
     try {
-        console.log('📄 Generating PDF from HTML with data:', applicantData);
+        console.log('📄 Attempting HTML to PDF generation with Puppeteer...');
         
         // Create HTML content
         const htmlContent = createHTMLForm(applicantData, registrationNumber);
         
-        // Launch browser
+        // Launch browser with Render.com friendly configuration
         browser = await puppeteer.launch({
-            headless: true,
+            headless: 'new',
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-gpu'
-            ]
+                '--disable-gpu',
+                '--disable-web-security',
+                '--disable-extensions',
+                '--no-first-run',
+                '--disable-default-apps',
+                '--disable-background-networking',
+                '--disable-background-timer-throttling',
+                '--disable-client-side-phishing-detection',
+                '--disable-hang-monitor',
+                '--disable-popup-blocking',
+                '--disable-prompt-on-repost',
+                '--disable-sync',
+                '--disable-translate',
+                '--metrics-recording-only',
+                '--no-default-browser-check',
+                '--no-zygote',
+                '--single-process'
+            ],
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
         });
         
         const page = await browser.newPage();
         
         // Set HTML content
         await page.setContent(htmlContent, {
-            waitUntil: 'networkidle0'
+            waitUntil: 'networkidle0',
+            timeout: 30000
         });
         
         // Generate PDF
@@ -534,45 +674,60 @@ const generatePDFFromHTML = async (applicantData, registrationNumber) => {
                 right: '15mm',
                 bottom: '20mm',
                 left: '15mm'
-            }
+            },
+            timeout: 30000
         });
         
-        console.log('✅ PDF generated successfully from HTML');
+        console.log('✅ PDF generated successfully from HTML using Puppeteer');
         return pdfBuffer;
         
     } catch (error) {
-        console.error('❌ Error generating PDF from HTML:', error);
+        console.error('❌ Error generating PDF from HTML:', error.message);
+        console.log('🔄 Puppeteer failed, will use fallback method');
         return null;
     } finally {
         if (browser) {
-            await browser.close();
+            try {
+                await browser.close();
+            } catch (closeError) {
+                console.warn('⚠️ Warning: Could not close Puppeteer browser:', closeError.message);
+            }
         }
     }
 };
 
-// Updated function to handle PDF creation with fallback
+// Updated function to handle PDF creation with multi-layered fallback approach
 const fillPDFForm = async (applicantData, registrationNumber) => {
     try {
-        console.log('📄 Starting PDF generation process...');
+        console.log('📄 Starting PDF generation process with multi-layered approach...');
         
-        // First try HTML-to-PDF generation
+        // Strategy 1: Try Puppeteer HTML-to-PDF generation (best quality)
+        console.log('🎯 Strategy 1: Attempting Puppeteer HTML-to-PDF generation...');
         const htmlPDF = await generatePDFFromHTML(applicantData, registrationNumber);
         if (htmlPDF) {
-            console.log('✅ Successfully generated filled PDF from HTML');
+            console.log('✅ Successfully generated filled PDF from HTML using Puppeteer');
             return htmlPDF;
         }
         
-        // Fallback to template PDF if HTML generation fails
-        console.log('📄 HTML generation failed, using template fallback');
+        // Strategy 2: Create structured PDF using PDF-lib (reliable fallback)
+        console.log('🎯 Strategy 2: Creating structured PDF using PDF-lib...');
+        const structuredPDF = await createStructuredPDF(applicantData, registrationNumber);
+        if (structuredPDF) {
+            console.log('✅ Successfully generated structured PDF using PDF-lib');
+            return structuredPDF;
+        }
+        
+        // Strategy 3: Fallback to template PDF (last resort)
+        console.log('🎯 Strategy 3: Using template PDF as final fallback...');
         const templatePath = path.join(__dirname, 'templates', 'template.pdf');
         
         if (fs.existsSync(templatePath)) {
             const templateBytes = fs.readFileSync(templatePath);
-            console.log('✅ Using template PDF as fallback');
+            console.log('✅ Using blank template PDF as final fallback');
             return templateBytes;
         }
         
-        console.log('❌ No template PDF available');
+        console.log('❌ All PDF generation strategies failed');
         return null;
         
     } catch (error) {
