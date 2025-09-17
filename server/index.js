@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-dotenv.config();
 const mongoose = require('mongoose');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
@@ -14,12 +13,15 @@ const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const morgan = require('morgan');
 
-// SQL Database imports (removed for Mongo-only mode)
-const useMongoAuth = (process.env.AUTH_BACKEND || '').toLowerCase() === 'mongo';
+// SQL Database imports
+const { testConnection, syncDatabase } = require('./config/database');
+const { initializeSQLUsers } = require('./utils/authHelpers');
 const { router: authRouter, authenticateToken, requireRole } = require('./routes/auth');
 
 // MongoDB imports
 const Applicant = require('./models/Applicant');
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -345,7 +347,7 @@ const coords = {
  * Fill ONGC template.pdf with applicant data using hardcoded coordinates
  * This does EXACTLY what you want - fills YOUR template with data
  */
-const fillPDFForm = async (applicantData) => {
+const fillPDFForm = async (applicantData, registrationNumber) => {
   try {
     console.log('🎯 FILLING ONGC TEMPLATE with data:', applicantData);
     
@@ -767,16 +769,46 @@ app.get('/api/approved', authenticateToken, (req, res) => {
   res.redirect('/api/applicants/approved');
 });
 
-// Health check endpoint
+// Health check endpoint with PDF diagnostic
 app.get('/api/health', (req, res) => {
   const mongoStatus = mongoose.connection.readyState === 1 ? 'MongoDB Connected' : 'Disconnected';
   const emailConfigured = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+  
+  // Check PDF files
+  const templatePath = path.join(__dirname, 'templates', 'template.pdf');
+  const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
+  
+  const templateExists = fs.existsSync(templatePath);
+  const fontExists = fs.existsSync(fontPath);
+  
+  let templateSize = 0;
+  let fontSize = 0;
+  
+  try {
+    if (templateExists) {
+      const stats = fs.statSync(templatePath);
+      templateSize = stats.size;
+    }
+    if (fontExists) {
+      const stats = fs.statSync(fontPath);
+      fontSize = stats.size;
+    }
+  } catch (e) {}
   
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
     mongodb: mongoStatus,
-    email: emailConfigured ? 'Configured' : 'Not Configured'
+    email: emailConfigured ? 'Configured' : 'Not Configured',
+    pdf_diagnosis: {
+      template_path: templatePath,
+      template_exists: templateExists,
+      template_size: templateSize + ' bytes',
+      font_path: fontPath,
+      font_exists: fontExists,
+      font_size: fontSize + ' bytes',
+      working_directory: __dirname
+    }
   });
 });
 
