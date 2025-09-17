@@ -337,82 +337,86 @@ const coords = {
   date: [460, 440], // optional
 };
 
-const fillPDFForm = async (applicantData, registrationNumber) => {
-    try {
-        console.log('📄 Filling PDF form with applicant data:', applicantData);
-        const templatePath = path.join(__dirname, 'templates', 'template.pdf');
-        const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
+/**
+ * Fills a PDF template with applicant data using hardcoded coordinates.
+ * @param {object} applicantData - An object containing the applicant's information.
+ * @returns {Promise<Uint8Array|null>} A promise that resolves with the PDF bytes or null if an error occurs.
+ */
+const fillPDFForm = async (applicantData) => {
+  try {
+    console.log('📄 Filling PDF form with applicant data:', applicantData);
+    const templatePath = path.join(__dirname, 'templates', 'template.pdf');
+    const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
 
-        // Check if template exists
-        if (!fs.existsSync(templatePath)) {
-            console.warn('PDF template not found at:', templatePath);
-            return null;
-        }
-
-        // Read the template PDF
-        const templateBytes = fs.readFileSync(templatePath);
-        const pdfDoc = await PDFDocument.load(templateBytes);
-        const fontBytes = fs.readFileSync(fontPath);
-        pdfDoc.registerFontkit(fontkit);
-        const customFont = await pdfDoc.embedFont(fontBytes);
-        const page = pdfDoc.getPages()[0];
-
-        const fontSize = 12;
-
-        const setFieldValue = (fieldName, value) => {
-            if (value === undefined || value === null) {
-                console.warn(`Field "${fieldName}" is undefined or null, skipping.`);
-                return;
-            }
-            try{
-              value=cleanText(String(value));
-            }
-            catch(e){
-              console.error(`Error cleaning text for field "${fieldName}":`, e);
-            }
-            const coord = coords[fieldName];
-            if (!coord) {
-                console.warn(`No coordinates defined for field "${fieldName}"`);
-                return;
-            }
-
-            const [x, y] = coord;
-            const text = value ? String(value).trim() : '';
-
-            page.drawText(text, {
-                x,
-                y,
-                size: fontSize,
-                font: customFont,
-                color: rgb(0, 0, 0),
-            });
-        };
-
-        // Use applicantData directly, registrationNumber is now part of it.
-        // The second argument 'registrationNumber' is kept for consistency but applicantData.reg is used.
-        setFieldValue('name', applicantData.name);
-        setFieldValue('email', applicantData.email);
-        setFieldValue('mobile', applicantData.mobile);
-        setFieldValue('age', applicantData.age);
-        setFieldValue('gender', applicantData.gender);
-        setFieldValue('category', applicantData.category);
-        setFieldValue('address', applicantData.address);
-        setFieldValue('father', applicantData.father);
-        setFieldValue('father_occupation', applicantData.father_occupation);
-        setFieldValue('college', applicantData.college);
-        setFieldValue('course', applicantData.course);
-        setFieldValue('semester', applicantData.semester);
-        setFieldValue('cgpa', applicantData.cgpa);
-        setFieldValue('percentage', applicantData.percentage);
-        setFieldValue('reg', applicantData.reg);
-
-
-        return await pdfDoc.save();
-        
-    } catch (error) {
-        console.error('Error filling PDF form:', error);
-        return null;
+    // Check if required files exist
+    if (!fs.existsSync(templatePath) || !fs.existsSync(fontPath)) {
+      console.error('PDF template or font file not found!');
+      return null;
     }
+
+    // Read the template PDF and font file
+    const templateBytes = fs.readFileSync(templatePath);
+    const fontBytes = fs.readFileSync(fontPath);
+    
+    // Load the PDF document
+    const pdfDoc = await PDFDocument.load(templateBytes);
+    
+    // Register fontkit and embed the custom font
+    pdfDoc.registerFontkit(fontkit);
+    const customFont = await pdfDoc.embedFont(fontBytes);
+    
+    const page = pdfDoc.getPages()[0];
+    const fontSize = 12;
+
+    // Helper function to draw text on the page
+    const setFieldValue = (fieldName, value) => {
+      if (value === undefined || value === null) {
+        console.warn(`Field "${fieldName}" is undefined or null, skipping.`);
+        return;
+      }
+      
+      const coord = coords[fieldName];
+      if (!coord) {
+        console.warn(`No coordinates defined for field "${fieldName}"`);
+        return;
+      }
+
+      const [x, y] = coord;
+      const text = String(value).trim();
+
+      page.drawText(text, {
+        x,
+        y,
+        size: fontSize,
+        font: customFont,
+        color: rgb(0, 0, 0),
+      });
+    };
+
+    // Fill in all the fields using the applicant data
+    setFieldValue('name', applicantData.name);
+    setFieldValue('email', applicantData.email);
+    setFieldValue('mobile', applicantData.mobile);
+    setFieldValue('age', applicantData.age);
+    setFieldValue('gender', applicantData.gender);
+    setFieldValue('category', applicantData.category);
+    setFieldValue('address', applicantData.address);
+    setFieldValue('father', applicantData.father);
+    setFieldValue('father_occupation', applicantData.father_occupation);
+    setFieldValue('college', applicantData.college);
+    setFieldValue('course', applicantData.course);
+    setFieldValue('semester', applicantData.semester);
+    setFieldValue('cgpa', applicantData.cgpa);
+    setFieldValue('percentage', applicantData.percentage);
+    setFieldValue('reg', applicantData.reg);
+
+    // Save the modified PDF to a byte array
+    return await pdfDoc.save();
+    
+  } catch (error) {
+    console.error('Error filling PDF form:', error);
+    return null;
+  }
 };
 // END: PDF Generation logic from Code 2
 
@@ -503,7 +507,7 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
         };
 
         // Fill the PDF form
-        pdfBuffer = await fillPDFForm(dataForPDF, registrationNumber);
+        pdfBuffer = await fillPDFForm(dataForPDF);
       } catch (error) {
         console.error('Error creating filled PDF:', error);
       }
@@ -646,7 +650,7 @@ app.post('/api/send-bulk-emails', authenticateToken, async (req, res) => {
                                 college: emailData.applicantData.presentInstitute
                             };
 
-                pdfBuffer = await fillPDFForm(dataForPDF, registrationNumber);
+                pdfBuffer = await fillPDFForm(dataForPDF);
 
             } catch (error) {
               console.error(`Error creating filled PDF for ${emailData.to}:`, error);
