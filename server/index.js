@@ -13,7 +13,6 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const morgan = require('morgan');
-const puppeteer = require('puppeteer');
 
 // SQL Database imports (removed for Mongo-only mode)
 const useMongoAuth = (process.env.AUTH_BACKEND || '').toLowerCase() === 'mongo';
@@ -96,43 +95,14 @@ app.use(morgan('combined')); // Also log to console
 
 // CORS configuration
 const corsOptions = {
-  origin: function (origin, callback) {
-    console.log('🌐 [CORS] Request from origin:', origin);
-    
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = process.env.CORS_ORIGIN ? 
-      process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : 
-      ['http://localhost:5173', 'http://localhost:3000'];
-    
-    console.log('🌐 [CORS] Allowed origins:', allowedOrigins);
-    
-    // Allow all origins if * is specified
-    if (allowedOrigins.includes('*')) {
-      console.log('✅ [CORS] Allowing all origins (wildcard)');
-      return callback(null, true);
-    }
-    
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
-      console.log('✅ [CORS] Origin allowed:', origin);
-      return callback(null, true);
-    } else {
-      console.log('❌ [CORS] Origin blocked:', origin);
-      return callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: process.env.CORS_ORIGIN ? 
+    process.env.CORS_ORIGIN.split(',') : 
+    ['http://localhost:5173', 'http://localhost:3000'],
   credentials: true,
-  optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'X-Requested-With', 'Accept']
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
-
-// Handle preflight requests explicitly
-app.options('*', cors(corsOptions));
 app.use(express.json({ limit: process.env.MAX_FILE_SIZE || '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: process.env.MAX_FILE_SIZE || '10mb' }));
 
@@ -340,14 +310,13 @@ const initializeMongoUsers = async () => {
 
 // Note: authenticateToken and requireRole are imported from routes/auth.js
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
-const fontkit = require('@pdf-lib/fontkit');
+const fontkit= require('@pdf-lib/fontkit');
 
-// Clean text function to remove problematic characters
+// START: PDF Generation logic from Code 2
 function cleanText(text) {
   return text.replace(/[\u0900-\u097F\/]+/g, '');
 }
 
-// Coordinate mapping for PDF form fields
 const coords = {
   name: [77, 720],
   age: [240, 718],
@@ -368,382 +337,94 @@ const coords = {
   date: [460, 440], // optional
 };
 
-// Function to create a simple HTML version of the form with data
-const createHTMLForm = (applicantData, registrationNumber) => {
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>ONGC Internship Application Form</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .form-container { max-width: 800px; margin: 0 auto; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .section { margin-bottom: 20px; border: 1px solid #ccc; padding: 15px; }
-        .section-title { font-weight: bold; font-size: 16px; margin-bottom: 10px; color: #333; }
-        .field-row { display: flex; margin-bottom: 10px; }
-        .field { flex: 1; margin-right: 20px; }
-        .field-label { font-weight: bold; color: #555; }
-        .field-value { border-bottom: 1px solid #333; min-height: 20px; padding: 2px; }
-    </style>
-</head>
-<body>
-    <div class="form-container">
-        <div class="header">
-            <h1>ONGC INTERNSHIP APPLICATION FORM</h1>
-            <h2>ओएनजीसी इंटर्नशिप आवेदन फॉर्म</h2>
-        </div>
-        
-        <div class="section">
-            <div class="section-title">Personal Information / व्यक्तिगत जानकारी</div>
-            <div class="field-row">
-                <div class="field">
-                    <div class="field-label">नाम/Name:</div>
-                    <div class="field-value">${applicantData.name || ''}</div>
-                </div>
-                <div class="field">
-                    <div class="field-label">उम्र/Age:</div>
-                    <div class="field-value">${applicantData.age || ''}</div>
-                </div>
-                <div class="field">
-                    <div class="field-label">पंजीकरण संख्या/Registration No.:</div>
-                    <div class="field-value">${registrationNumber || ''}</div>
-                </div>
-            </div>
-            <div class="field-row">
-                <div class="field">
-                    <div class="field-label">लिंग/Gender:</div>
-                    <div class="field-value">${applicantData.gender || ''}</div>
-                </div>
-                <div class="field">
-                    <div class="field-label">श्रेणी/Category:</div>
-                    <div class="field-value">${applicantData.category || ''}</div>
-                </div>
-            </div>
-            <div class="field-row">
-                <div class="field">
-                    <div class="field-label">पता/Address:</div>
-                    <div class="field-value">${applicantData.address || ''}</div>
-                </div>
-            </div>
-            <div class="field-row">
-                <div class="field">
-                    <div class="field-label">मोबाइल नंबर/Mobile No.:</div>
-                    <div class="field-value">${applicantData.mobile || ''}</div>
-                </div>
-                <div class="field">
-                    <div class="field-label">ई-मेल/E-mail:</div>
-                    <div class="field-value">${applicantData.email || ''}</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="section">
-            <div class="section-title">Parent Information / अभिभावक जानकारी</div>
-            <div class="field-row">
-                <div class="field">
-                    <div class="field-label">पिता/माता का नाम/Father/Mother's Name:</div>
-                    <div class="field-value">${applicantData.father || ''}</div>
-                </div>
-            </div>
-            <div class="field-row">
-                <div class="field">
-                    <div class="field-label">पिता/माता का व्यवसाय/Father/Mother's Occupation:</div>
-                    <div class="field-value">${applicantData.father_occupation || ''}</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="section">
-            <div class="section-title">Academic Information / शैक्षणिक विवरण</div>
-            <div class="field-row">
-                <div class="field">
-                    <div class="field-label">वर्तमान पाठ्यक्रम का नाम/Name of Present Course:</div>
-                    <div class="field-value">${applicantData.course || ''}</div>
-                </div>
-            </div>
-            <div class="field-row">
-                <div class="field">
-                    <div class="field-label">वर्तमान सेमेस्टर/Present Semester:</div>
-                    <div class="field-value">${applicantData.semester || ''}</div>
-                </div>
-            </div>
-            <div class="field-row">
-                <div class="field">
-                    <div class="field-label">पिछला सेमेस्टर SGPA/Last Semester SGPA:</div>
-                    <div class="field-value">${applicantData.cgpa || ''}</div>
-                </div>
-                <div class="field">
-                    <div class="field-label">10+2 में प्रतिशत/%age in 10+2:</div>
-                    <div class="field-value">${applicantData.percentage || ''}%</div>
-                </div>
-            </div>
-            <div class="field-row">
-                <div class="field">
-                    <div class="field-label">संस्थान का नाम/Name of Institute:</div>
-                    <div class="field-value">${applicantData.college || ''}</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="section">
-            <div class="section-title">Declaration / घोषणा</div>
-            <p>I certify that all the information provided above is true and correct to the best of my knowledge.</p>
-            <p>मैं प्रमाणित करता/करती हूँ कि उपरोक्त दी गई सभी जानकारी मेरी जानकारी के अनुसार सत्य और सही है।</p>
-        </div>
-    </div>
-</body>
-</html>
-    `;
-};
-
-// Function to create a structured PDF using PDF-lib
-const createStructuredPDF = async (applicantData, registrationNumber) => {
+const fillPDFForm = async (applicantData, registrationNumber) => {
     try {
-        console.log('📄 Creating structured PDF with data:', applicantData);
-        
-        // Create a new PDF document
-        const pdfDoc = await PDFDocument.create();
-        const page = pdfDoc.addPage([595.28, 841.89]); // A4 size
-        
-        // Embed fonts
-        const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-        
-        const { width, height } = page.getSize();
-        
-        // Helper function to draw text
-        const drawText = (text, x, y, options = {}) => {
-            page.drawText(String(text || ''), {
+        console.log('📄 Filling PDF form with applicant data:', applicantData);
+        const templatePath = path.join(__dirname, 'templates', 'template.pdf');
+        const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
+
+        // Check if template exists
+        if (!fs.existsSync(templatePath)) {
+            console.warn('PDF template not found at:', templatePath);
+            return null;
+        }
+
+        // Read the template PDF
+        const templateBytes = fs.readFileSync(templatePath);
+        const pdfDoc = await PDFDocument.load(templateBytes);
+        const fontBytes = fs.readFileSync(fontPath);
+        pdfDoc.registerFontkit(fontkit);
+        const customFont = await pdfDoc.embedFont(fontBytes);
+        const page = pdfDoc.getPages()[0];
+
+        const fontSize = 12;
+
+        const setFieldValue = (fieldName, value) => {
+            if (value === undefined || value === null) {
+                console.warn(`Field "${fieldName}" is undefined or null, skipping.`);
+                return;
+            }
+            try{
+              value=cleanText(String(value));
+            }
+            catch(e){
+              console.error(`Error cleaning text for field "${fieldName}":`, e);
+            }
+            const coord = coords[fieldName];
+            if (!coord) {
+                console.warn(`No coordinates defined for field "${fieldName}"`);
+                return;
+            }
+
+            const [x, y] = coord;
+            const text = value ? String(value).trim() : '';
+
+            page.drawText(text, {
                 x,
                 y,
-                size: options.size || 12,
-                font: options.bold ? helveticaBoldFont : helveticaFont,
+                size: fontSize,
+                font: customFont,
                 color: rgb(0, 0, 0),
-                ...options
             });
         };
-        
-        // Draw header
-        drawText('ONGC INTERNSHIP APPLICATION FORM', 150, height - 50, { size: 16, bold: true });
-        drawText('ओएनजीसी इंटर्नशिप आवेदन फॉर्म', 150, height - 75, { size: 14, bold: true });
-        
-        let yPosition = height - 120;
-        
-        // Personal Information Section
-        drawText('Personal Information / व्यक्तिगत जानकारी', 50, yPosition, { size: 14, bold: true });
-        yPosition -= 30;
-        
-        // Draw form fields in a structured manner
-        const fieldWidth = 200;
-        const col1X = 50;
-        const col2X = 300;
-        
-        drawText('Name/नाम:', col1X, yPosition, { bold: true });
-        drawText(applicantData.name || '', col1X + 80, yPosition);
-        drawText('Age/उम्र:', col2X, yPosition, { bold: true });
-        drawText(applicantData.age || '', col2X + 60, yPosition);
-        yPosition -= 25;
-        
-        drawText('Registration No./पंजीकरण संख्या:', col1X, yPosition, { bold: true });
-        drawText(registrationNumber || '', col1X + 160, yPosition);
-        yPosition -= 25;
-        
-        drawText('Gender/लिंग:', col1X, yPosition, { bold: true });
-        drawText(applicantData.gender || '', col1X + 80, yPosition);
-        drawText('Category/श्रेणी:', col2X, yPosition, { bold: true });
-        drawText(applicantData.category || '', col2X + 80, yPosition);
-        yPosition -= 25;
-        
-        drawText('Address/पता:', col1X, yPosition, { bold: true });
-        drawText(applicantData.address || '', col1X + 80, yPosition);
-        yPosition -= 25;
-        
-        drawText('Mobile/मोबाइल:', col1X, yPosition, { bold: true });
-        drawText(applicantData.mobile || '', col1X + 80, yPosition);
-        drawText('Email/ई-मेल:', col2X, yPosition, { bold: true });
-        drawText(applicantData.email || '', col2X + 60, yPosition);
-        yPosition -= 40;
-        
-        // Parent Information Section
-        drawText('Parent Information / अभिभावक जानकारी', 50, yPosition, { size: 14, bold: true });
-        yPosition -= 30;
-        
-        drawText('Father/Mother Name:', col1X, yPosition, { bold: true });
-        drawText(applicantData.father || '', col1X + 120, yPosition);
-        yPosition -= 25;
-        
-        drawText('Father/Mother Occupation:', col1X, yPosition, { bold: true });
-        drawText(applicantData.father_occupation || '', col1X + 150, yPosition);
-        yPosition -= 40;
-        
-        // Academic Information Section
-        drawText('Academic Information / शैक्षणिक विवरण', 50, yPosition, { size: 14, bold: true });
-        yPosition -= 30;
-        
-        drawText('Course/पाठ्यक्रम:', col1X, yPosition, { bold: true });
-        drawText(applicantData.course || '', col1X + 100, yPosition);
-        yPosition -= 25;
-        
-        drawText('Semester/सेमेस्टर:', col1X, yPosition, { bold: true });
-        drawText(applicantData.semester || '', col1X + 100, yPosition);
-        yPosition -= 25;
-        
-        drawText('SGPA:', col1X, yPosition, { bold: true });
-        drawText(applicantData.cgpa || '', col1X + 50, yPosition);
-        drawText('10+2 %:', col2X, yPosition, { bold: true });
-        drawText((applicantData.percentage || '') + '%', col2X + 50, yPosition);
-        yPosition -= 25;
-        
-        drawText('Institute/संस्थान:', col1X, yPosition, { bold: true });
-        drawText(applicantData.college || '', col1X + 80, yPosition);
-        yPosition -= 40;
-        
-        // Declaration
-        drawText('Declaration / घोषणा', 50, yPosition, { size: 14, bold: true });
-        yPosition -= 25;
-        
-        const declarationText = 'I certify that all the information provided above is true and correct to the best of my knowledge.';
-        drawText(declarationText, 50, yPosition, { size: 10 });
-        yPosition -= 20;
-        
-        const hindiDeclaration = 'मैं प्रमाणित करता/करती हूँ कि उपरोक्त दी गई सभी जानकारी मेरी जानकारी के अनुसार सत्य और सही है।';
-        drawText(hindiDeclaration, 50, yPosition, { size: 10 });
-        
-        console.log('✅ Structured PDF created successfully');
+
+        // Use applicantData directly, registrationNumber is now part of it.
+        // The second argument 'registrationNumber' is kept for consistency but applicantData.reg is used.
+        setFieldValue('name', applicantData.name);
+        setFieldValue('email', applicantData.email);
+        setFieldValue('mobile', applicantData.mobile);
+        setFieldValue('age', applicantData.age);
+        setFieldValue('gender', applicantData.gender);
+        setFieldValue('category', applicantData.category);
+        setFieldValue('address', applicantData.address);
+        setFieldValue('father', applicantData.father);
+        setFieldValue('father_occupation', applicantData.father_occupation);
+        setFieldValue('college', applicantData.college);
+        setFieldValue('course', applicantData.course);
+        setFieldValue('semester', applicantData.semester);
+        setFieldValue('cgpa', applicantData.cgpa);
+        setFieldValue('percentage', applicantData.percentage);
+        setFieldValue('reg', applicantData.reg);
+
+
         return await pdfDoc.save();
         
     } catch (error) {
-        console.error('❌ Error creating structured PDF:', error);
+        console.error('Error filling PDF form:', error);
         return null;
     }
 };
+// END: PDF Generation logic from Code 2
 
-// Function to generate PDF from HTML using Puppeteer (with better error handling)
-const generatePDFFromHTML = async (applicantData, registrationNumber) => {
-    let browser = null;
-    try {
-        console.log('📄 Attempting HTML to PDF generation with Puppeteer...');
-        
-        // Create HTML content
-        const htmlContent = createHTMLForm(applicantData, registrationNumber);
-        
-        // Launch browser with Render.com friendly configuration
-        browser = await puppeteer.launch({
-            headless: 'new',
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-web-security',
-                '--disable-extensions',
-                '--no-first-run',
-                '--disable-default-apps',
-                '--disable-background-networking',
-                '--disable-background-timer-throttling',
-                '--disable-client-side-phishing-detection',
-                '--disable-hang-monitor',
-                '--disable-popup-blocking',
-                '--disable-prompt-on-repost',
-                '--disable-sync',
-                '--disable-translate',
-                '--metrics-recording-only',
-                '--no-default-browser-check',
-                '--no-zygote',
-                '--single-process'
-            ],
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
-        });
-        
-        const page = await browser.newPage();
-        
-        // Set HTML content
-        await page.setContent(htmlContent, {
-            waitUntil: 'networkidle0',
-            timeout: 30000
-        });
-        
-        // Generate PDF
-        const pdfBuffer = await page.pdf({
-            format: 'A4',
-            printBackground: true,
-            margin: {
-                top: '20mm',
-                right: '15mm',
-                bottom: '20mm',
-                left: '15mm'
-            },
-            timeout: 30000
-        });
-        
-        console.log('✅ PDF generated successfully from HTML using Puppeteer');
-        return pdfBuffer;
-        
-    } catch (error) {
-        console.error('❌ Error generating PDF from HTML:', error.message);
-        console.log('🔄 Puppeteer failed, will use fallback method');
-        return null;
-    } finally {
-        if (browser) {
-            try {
-                await browser.close();
-            } catch (closeError) {
-                console.warn('⚠️ Warning: Could not close Puppeteer browser:', closeError.message);
-            }
-        }
-    }
-};
-
-// Updated function to handle PDF creation with multi-layered fallback approach
-const fillPDFForm = async (applicantData, registrationNumber) => {
-    try {
-        console.log('📄 Starting PDF generation process with multi-layered approach...');
-        
-        // Strategy 1: Try Puppeteer HTML-to-PDF generation (best quality)
-        console.log('🎯 Strategy 1: Attempting Puppeteer HTML-to-PDF generation...');
-        const htmlPDF = await generatePDFFromHTML(applicantData, registrationNumber);
-        if (htmlPDF) {
-            console.log('✅ Successfully generated filled PDF from HTML using Puppeteer');
-            return htmlPDF;
-        }
-        
-        // Strategy 2: Create structured PDF using PDF-lib (reliable fallback)
-        console.log('🎯 Strategy 2: Creating structured PDF using PDF-lib...');
-        const structuredPDF = await createStructuredPDF(applicantData, registrationNumber);
-        if (structuredPDF) {
-            console.log('✅ Successfully generated structured PDF using PDF-lib');
-            return structuredPDF;
-        }
-        
-        // Strategy 3: Fallback to template PDF (last resort)
-        console.log('🎯 Strategy 3: Using template PDF as final fallback...');
-        const templatePath = path.join(__dirname, 'templates', 'template.pdf');
-        
-        if (fs.existsSync(templatePath)) {
-            const templateBytes = fs.readFileSync(templatePath);
-            console.log('✅ Using blank template PDF as final fallback');
-            return templateBytes;
-        }
-        
-        console.log('❌ All PDF generation strategies failed');
-        return null;
-        
-    } catch (error) {
-        console.error('❌ Error in PDF processing:', error);
-        return null;
-    }
-};
 // Email sending endpoint
 app.post('/api/send-email', authenticateToken, async (req, res) => {
   try {
     const { to, subject, html, text, attachTemplate, applicantData } = req.body;
-    console.log('\n=== EMAIL REQUEST START ===');
+    console.log(applicantData);
     console.log('📧 Email sending request received:');
     console.log(`   📮 To: ${to}`);
     console.log(`   📝 Subject: ${subject}`);
-    console.log(`   📎 Attach Template: ${attachTemplate ? 'Yes' : 'No'}`);
+    console.log(`   📆 Attach Template: ${attachTemplate ? 'Yes' : 'No'}`);
     console.log(`   📄 Has applicant data: ${applicantData ? 'Yes' : 'No'}`);
     console.log('   📄 Full request body keys:', Object.keys(req.body));
     console.log('=== EMAIL REQUEST END ===\n');
@@ -794,79 +475,62 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
     };
     console.log('📎 Processing PDF attachment request...');
     // Add PDF template attachment if requested
-    if (attachTemplate) {
-      console.log('📄 Filling PDF template with applicant data...');
-      console.log('📄 Applicant data received:', applicantData);
-      
-      const templatePath = path.join(__dirname, 'templates', 'template.pdf');
+    if (attachTemplate && applicantData) {
       let pdfBuffer = null;
       
       try {
-        if (fs.existsSync(templatePath)) {
-          console.log('✅ Template PDF found at:', templatePath);
-          
-          // Extract registration number from email content
-          const regMatch = html.match(/SAIL-\d{4}-\d{4}/);
-          const registrationNumber = regMatch ? regMatch[0] : 'SAIL-2025-0001';
-          console.log('🔢 Registration number:', registrationNumber);
-          
-          // Prepare data for PDF filling
-          const data = {
-            name: applicantData?.name || 'Student Name',
-            age: String(applicantData?.age || '22'),
-            gender: applicantData?.gender || 'Male',
-            category: applicantData?.category || 'General',
+        // Extract registration number from email content
+        const regMatch = html.match(/SAIL-\\d{4}-\\d{4}/);
+        const registrationNumber = regMatch ? regMatch[0] : '';
+        
+        // Map applicantData from Mongoose schema to the format expected by fillPDFForm
+        const dataForPDF = {
+            name: applicantData.name,
+            age: applicantData.age,
+            gender: applicantData.gender,
+            category: applicantData.category,
             reg: registrationNumber,
-            address: applicantData?.address || 'Address',
-            mobile: applicantData?.mobileNo || applicantData?.mobile || '9999999999',
-            email: applicantData?.email || to,
-            father: applicantData?.fatherMotherName || 'Parent Name',
-            father_occupation: applicantData?.fatherMotherOccupation || 'Occupation',
-            course: applicantData?.areasOfTraining || 'Engineering',
-            semester: applicantData?.presentSemester || '6th',
-            cgpa: String(applicantData?.lastSemesterSGPA || '8.5'),
-            percentage: String(applicantData?.percentageIn10Plus2 || '85'),
-            college: applicantData?.presentInstitute || 'Engineering College'
-          };
-          
-          console.log('📄 Data prepared for PDF:', data);
-          
-          // Fill the PDF template
-          pdfBuffer = await fillPDFForm(data, registrationNumber);
-          
-          if (pdfBuffer && pdfBuffer.length > 0) {
-            console.log('✅ PDF filled successfully! Size:', pdfBuffer.length, 'bytes');
-            
-            mailOptions.attachments.push({
-              filename: 'ONGC_Internship_Application_Form_Filled.pdf',
-              content: pdfBuffer,
-              contentType: 'application/pdf'
-            });
-          } else {
-            console.log('⚠️  PDF filling failed, using blank template');
-            
+            address: applicantData.address,
+            mobile: applicantData.mobileNo,
+            email: applicantData.email,
+            father: applicantData.fatherMotherName,
+            father_occupation: applicantData.fatherMotherOccupation,
+            course: applicantData.areasOfTraining,
+            semester: applicantData.presentSemester,
+            cgpa: applicantData.lastSemesterSGPA,
+            percentage: applicantData.percentageIn10Plus2,
+            college: applicantData.presentInstitute
+        };
+
+        // Fill the PDF form
+        pdfBuffer = await fillPDFForm(dataForPDF, registrationNumber);
+      } catch (error) {
+        console.error('Error creating filled PDF:', error);
+      }
+      
+      if (pdfBuffer) {
+        // Use filled PDF
+        mailOptions.attachments.push({
+          filename: 'ONGC_Internship_Application_Form_Filled.pdf',
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        });
+      } else {
+        // Fallback to blank template
+        const templatePath = path.join(__dirname, 'templates', 'template.pdf');
+        
+        try {
+          if (fs.existsSync(templatePath)) {
             mailOptions.attachments.push({
               filename: 'ONGC_Internship_Application_Form.pdf',
               path: templatePath,
               contentType: 'application/pdf'
             });
+          } else {
+            console.warn('Template PDF not found at:', templatePath);
           }
-          
-        } else {
-          console.error('❌ Template PDF not found at:', templatePath);
-        }
-      } catch (error) {
-        console.error('❌ Error processing PDF:', error);
-        
-        // Fallback to blank template if anything fails
-        try {
-          mailOptions.attachments.push({
-            filename: 'ONGC_Internship_Application_Form.pdf',
-            path: templatePath,
-            contentType: 'application/pdf'
-          });
-        } catch (fallbackError) {
-          console.error('❌ Fallback also failed:', fallbackError);
+        } catch (attachError) {
+          console.error('Error attaching template:', attachError);
         }
       }
     }
@@ -957,20 +621,35 @@ app.post('/api/send-bulk-emails', authenticateToken, async (req, res) => {
           };
           
           // Add PDF template attachment if requested
-          if (emailData.attachTemplate) {
-            // Try to fill PDF with applicant data if available
+          if (emailData.attachTemplate && emailData.applicantData) {
             let pdfBuffer = null;
             
-            if (emailData.applicantData) {
-              try {
-                // Extract registration number from email content
-                const regMatch = emailData.html ? emailData.html.match(/SAIL-\d{4}-\d{4}/) : null;
+            try {
+                const regMatch = emailData.html ? emailData.html.match(/SAIL-\\d{4}-\\d{4}/) : null;
                 const registrationNumber = regMatch ? regMatch[0] : '';
                 
-                pdfBuffer = await fillPDFForm(emailData.applicantData, registrationNumber);
-              } catch (error) {
-                console.error(`Error creating filled PDF for ${emailData.to}:`, error);
-              }
+                            const dataForPDF = {
+                                name: emailData.applicantData.name,
+                                age: emailData.applicantData.age,
+                                gender: emailData.applicantData.gender,
+                                category: emailData.applicantData.category,
+                                reg: registrationNumber,
+                                address: emailData.applicantData.address,
+                                mobile: emailData.applicantData.mobileNo,
+                                email: emailData.applicantData.email,
+                                father: emailData.applicantData.fatherMotherName,
+                                father_occupation: emailData.applicantData.fatherMotherOccupation,
+                                course: emailData.applicantData.areasOfTraining,
+                                semester: emailData.applicantData.presentSemester,
+                                cgpa: emailData.applicantData.lastSemesterSGPA,
+                                percentage: emailData.applicantData.percentageIn10Plus2,
+                                college: emailData.applicantData.presentInstitute
+                            };
+
+                pdfBuffer = await fillPDFForm(dataForPDF, registrationNumber);
+
+            } catch (error) {
+              console.error(`Error creating filled PDF for ${emailData.to}:`, error);
             }
             
             if (pdfBuffer) {
@@ -1066,186 +745,15 @@ app.get('/api/approved', authenticateToken, (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  const mongoStatus = mongoose.connection.readyState === 1 ? 'MongoDB Connected' : 'In-Memory Storage';
+  const mongoStatus = mongoose.connection.readyState === 1 ? 'MongoDB Connected' : 'Disconnected';
   const emailConfigured = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
-  
-  // Check if template files exist
-  const templatePath = path.join(__dirname, 'templates', 'template.pdf');
-  const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
-  const templateExists = fs.existsSync(templatePath);
-  const fontExists = fs.existsSync(fontPath);
-  
-  let templateSize = 0;
-  if (templateExists) {
-    try {
-      const stats = fs.statSync(templatePath);
-      templateSize = stats.size;
-    } catch (e) {}
-  }
   
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
     mongodb: mongoStatus,
-    sql: 'Available for Authentication',
-    email: emailConfigured ? 'Configured' : 'Not Configured',
-    template: {
-      exists: templateExists,
-      path: templatePath,
-      size: templateSize
-    },
-    font: {
-      exists: fontExists,
-      path: fontPath
-    }
+    email: emailConfigured ? 'Configured' : 'Not Configured'
   });
-});
-// Test PDF generation endpoint (no authentication required)
-app.post('/api/test-pdf', async (req, res) => {
-  try {
-    const { applicantData, registrationNumber } = req.body;
-    
-    console.log('📄 Test PDF generation request received:');
-    console.log('   📝 Applicant Data:', applicantData);
-    console.log('   🔢 Registration Number:', registrationNumber);
-    
-    // Generate PDF
-    const pdfBuffer = await fillPDFForm(applicantData, registrationNumber);
-    
-    if (pdfBuffer) {
-      // Send PDF as response
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', 'attachment; filename="ONGC_Test_Form.pdf"');
-      res.send(pdfBuffer);
-      
-      console.log('✅ Test PDF generated and sent successfully');
-    } else {
-      console.log('❌ Failed to generate PDF');
-      res.status(500).json({
-        success: false,
-        message: 'Failed to generate PDF'
-      });
-    }
-    
-  } catch (error) {
-    console.error('❌ Test PDF generation error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'PDF generation error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
-
-// Test PDF email endpoint (no authentication required) 
-app.post('/api/test-pdf-email', async (req, res) => {
-  try {
-    const { applicantData, registrationNumber, to } = req.body;
-    
-    console.log('📧 Test PDF email request received:');
-    console.log('   📝 Applicant Data:', applicantData);
-    console.log('   🔢 Registration Number:', registrationNumber);
-    console.log('   📮 To Email:', to);
-    
-    // Validate required fields
-    if (!to || !applicantData || !registrationNumber) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields: to, applicantData, registrationNumber'
-      });
-    }
-    
-    // Check if email configuration is available
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      return res.status(500).json({
-        success: false,
-        message: 'Email configuration not found. Please configure EMAIL_USER and EMAIL_PASS in environment variables.'
-      });
-    }
-    
-    // Generate PDF
-    const pdfBuffer = await fillPDFForm(applicantData, registrationNumber);
-    
-    // Create transporter
-    const transporter = createEmailTransporter();
-    
-    // Email options
-    const mailOptions = {
-      from: `"ONGC Dehradun - SAIL" <${process.env.EMAIL_USER}>`,
-      to: to,
-      subject: 'ONGC Internship Application Confirmation - Test',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h2 style="color: #d32f2f;">ONGC Internship Application</h2>
-            <h3 style="color: #1976d2;">Application Confirmation - Test</h3>
-          </div>
-          
-          <div style="background-color: #f5f5f5; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-            <h3 style="color: #333; margin-top: 0;">Dear ${applicantData.name || 'Applicant'},</h3>
-            <p>This is a test email confirming your ONGC internship application.</p>
-            <p><strong>Registration Number:</strong> ${registrationNumber}</p>
-            <p><strong>Email:</strong> ${applicantData.email || 'N/A'}</p>
-            <p><strong>Course:</strong> ${applicantData.course || 'N/A'}</p>
-          </div>
-          
-          <div style="background-color: #e3f2fd; padding: 15px; border-radius: 5px; border-left: 4px solid #1976d2;">
-            <p style="margin: 0; color: #1976d2;"><strong>Note:</strong> Please find your filled application form attached as PDF.</p>
-          </div>
-          
-          <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-            <p style="color: #666; font-size: 12px;">This is an automated test message from ONGC Dehradun.</p>
-          </div>
-        </div>
-      `,
-      attachments: []
-    };
-    
-    // Add PDF attachment
-    if (pdfBuffer) {
-      mailOptions.attachments.push({
-        filename: 'ONGC_Internship_Application_Form_Filled.pdf',
-        content: pdfBuffer,
-        contentType: 'application/pdf'
-      });
-    } else {
-      // Fallback to template if available
-      const templatePath = path.join(__dirname, 'templates', 'template.pdf');
-      if (fs.existsSync(templatePath)) {
-        mailOptions.attachments.push({
-          filename: 'ONGC_Internship_Application_Form.pdf',
-          path: templatePath,
-          contentType: 'application/pdf'
-        });
-      }
-    }
-    
-    // Send email
-    const info = await transporter.sendMail(mailOptions);
-    
-    console.log('✅ Test PDF email sent successfully:', {
-      messageId: info.messageId,
-      to: to,
-      pdfGenerated: !!pdfBuffer,
-      attachmentCount: mailOptions.attachments.length
-    });
-    
-    res.json({
-      success: true,
-      message: 'Test PDF email sent successfully',
-      messageId: info.messageId,
-      pdfGenerated: !!pdfBuffer,
-      attachmentCount: mailOptions.attachments.length
-    });
-    
-  } catch (error) {
-    console.error('❌ Test PDF email error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'PDF email sending error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
 });
 
 // Test email endpoint (no authentication required)
