@@ -440,6 +440,12 @@ const fillPDFForm = async (applicantData, registrationNumber) => {
 // Email sending endpoint
 app.post('/api/send-email', authenticateToken, async (req, res) => {
     try {
+        res.json({
+            success: true,
+            message: 'first one',
+        });
+        return;
+
         const {to, subject, html, text, attachTemplate, applicantData} = req.body;
         console.log(applicantData);
         console.log('📧 Email sending request received:');
