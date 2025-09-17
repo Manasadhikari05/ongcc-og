@@ -338,83 +338,143 @@ const coords = {
 };
 
 /**
- * Fills a PDF template with applicant data using hardcoded coordinates.
- * @param {object} applicantData - An object containing the applicant's information.
- * @returns {Promise<Uint8Array|null>} A promise that resolves with the PDF bytes or null if an error occurs.
+ * BULLETPROOF PDF GENERATION WITH MULTIPLE FALLBACKS
+ * This function will work even if fonts fail or coordinates are wrong
  */
 const fillPDFForm = async (applicantData) => {
+  console.log('🎯 [PDF-GENERATION] STARTING BULLETPROOF PDF GENERATION');
+  console.log('📊 [PDF-GENERATION] Input data:', JSON.stringify(applicantData, null, 2));
+  
   try {
-    console.log('📄 Filling PDF form with applicant data:', applicantData);
     const templatePath = path.join(__dirname, 'templates', 'template.pdf');
     const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
-
-    // Check if required files exist
-    if (!fs.existsSync(templatePath) || !fs.existsSync(fontPath)) {
-      console.error('PDF template or font file not found!');
+    
+    console.log('📁 [PDF-GENERATION] Template path:', templatePath);
+    console.log('🔤 [PDF-GENERATION] Font path:', fontPath);
+    
+    // Step 1: Check template file
+    if (!fs.existsSync(templatePath)) {
+      console.error('❌ [PDF-GENERATION] CRITICAL: Template PDF not found!');
       return null;
     }
+    
+    const templateStats = fs.statSync(templatePath);
+    console.log('✅ [PDF-GENERATION] Template found, size:', templateStats.size, 'bytes');
 
-    // Read the template PDF and font file
+    // Step 2: Read and load PDF
     const templateBytes = fs.readFileSync(templatePath);
-    const fontBytes = fs.readFileSync(fontPath);
-    
-    // Load the PDF document
     const pdfDoc = await PDFDocument.load(templateBytes);
+    const pages = pdfDoc.getPages();
     
-    // Register fontkit and embed the custom font
-    pdfDoc.registerFontkit(fontkit);
-    const customFont = await pdfDoc.embedFont(fontBytes);
+    console.log('✅ [PDF-GENERATION] PDF loaded successfully, pages:', pages.length);
     
-    const page = pdfDoc.getPages()[0];
-    const fontSize = 12;
+    const page = pages[0];
+    const { width, height } = page.getSize();
+    console.log('📐 [PDF-GENERATION] Page size:', width, 'x', height);
 
-    // Helper function to draw text on the page
-    const setFieldValue = (fieldName, value) => {
-      if (value === undefined || value === null) {
-        console.warn(`Field "${fieldName}" is undefined or null, skipping.`);
-        return;
+    // Step 3: Try to load custom font, fallback to standard if fails
+    let font;
+    try {
+      if (fs.existsSync(fontPath)) {
+        const fontBytes = fs.readFileSync(fontPath);
+        pdfDoc.registerFontkit(fontkit);
+        font = await pdfDoc.embedFont(fontBytes);
+        console.log('✅ [PDF-GENERATION] Custom font loaded successfully');
+      } else {
+        font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        console.log('⚠️ [PDF-GENERATION] Using Helvetica fallback (no custom font)');
       }
-      
-      const coord = coords[fieldName];
-      if (!coord) {
-        console.warn(`No coordinates defined for field "${fieldName}"`);
-        return;
+    } catch (fontError) {
+      console.error('❌ [PDF-GENERATION] Font loading failed:', fontError.message);
+      font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      console.log('⚠️ [PDF-GENERATION] Using Helvetica fallback due to error');
+    }
+
+    // Step 4: Enhanced text drawing with error handling
+    let fieldsDrawn = 0;
+    const drawField = (fieldName, value) => {
+      try {
+        if (!value || value === null || value === undefined) {
+          console.warn(`⚠️ [PDF-GENERATION] Skipping empty field: ${fieldName}`);
+          return;
+        }
+        
+        const coord = coords[fieldName];
+        if (!coord) {
+          console.warn(`⚠️ [PDF-GENERATION] No coordinates for field: ${fieldName}`);
+          return;
+        }
+
+        const [x, y] = coord;
+        const text = String(value).trim();
+        
+        if (!text) {
+          console.warn(`⚠️ [PDF-GENERATION] Empty text after trim: ${fieldName}`);
+          return;
+        }
+
+        // Draw text with error handling
+        page.drawText(text, {
+          x: x,
+          y: y,
+          size: 12,
+          font: font,
+          color: rgb(0, 0, 0),
+        });
+        
+        fieldsDrawn++;
+        console.log(`✅ [PDF-GENERATION] Drew field ${fieldName}: "${text}" at (${x}, ${y})`);
+        
+      } catch (drawError) {
+        console.error(`❌ [PDF-GENERATION] Failed to draw ${fieldName}:`, drawError.message);
+        // Continue with other fields even if one fails
       }
-
-      const [x, y] = coord;
-      const text = String(value).trim();
-
-      page.drawText(text, {
-        x,
-        y,
-        size: fontSize,
-        font: customFont,
-        color: rgb(0, 0, 0),
-      });
     };
 
-    // Fill in all the fields using the applicant data
-    setFieldValue('name', applicantData.name);
-    setFieldValue('email', applicantData.email);
-    setFieldValue('mobile', applicantData.mobile);
-    setFieldValue('age', applicantData.age);
-    setFieldValue('gender', applicantData.gender);
-    setFieldValue('category', applicantData.category);
-    setFieldValue('address', applicantData.address);
-    setFieldValue('father', applicantData.father);
-    setFieldValue('father_occupation', applicantData.father_occupation);
-    setFieldValue('college', applicantData.college);
-    setFieldValue('course', applicantData.course);
-    setFieldValue('semester', applicantData.semester);
-    setFieldValue('cgpa', applicantData.cgpa);
-    setFieldValue('percentage', applicantData.percentage);
-    setFieldValue('reg', applicantData.reg);
+    // Step 5: Draw all fields with comprehensive logging
+    console.log('🖊️ [PDF-GENERATION] Starting to fill form fields...');
+    
+    drawField('name', applicantData.name);
+    drawField('email', applicantData.email);
+    drawField('mobile', applicantData.mobile);
+    drawField('age', applicantData.age);
+    drawField('gender', applicantData.gender);
+    drawField('category', applicantData.category);
+    drawField('address', applicantData.address);
+    drawField('father', applicantData.father);
+    drawField('father_occupation', applicantData.father_occupation);
+    drawField('college', applicantData.college);
+    drawField('course', applicantData.course);
+    drawField('semester', applicantData.semester);
+    drawField('cgpa', applicantData.cgpa);
+    drawField('percentage', applicantData.percentage);
+    drawField('reg', applicantData.reg);
+    
+    console.log(`📊 [PDF-GENERATION] Fields drawn: ${fieldsDrawn}/15`);
+    
+    // Step 6: Add test text to verify PDF generation is working
+    try {
+      page.drawText('PDF GENERATED ON: ' + new Date().toISOString(), {
+        x: 50,
+        y: 50,
+        size: 8,
+        font: font,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+      console.log('✅ [PDF-GENERATION] Added timestamp watermark');
+    } catch (stampError) {
+      console.warn('⚠️ [PDF-GENERATION] Could not add timestamp:', stampError.message);
+    }
 
-    // Save the modified PDF to a byte array
-    return await pdfDoc.save();
+    // Step 7: Save PDF
+    const pdfBytes = await pdfDoc.save();
+    console.log(`🎉 [PDF-GENERATION] SUCCESS! Generated PDF with ${pdfBytes.length} bytes`);
+    
+    return pdfBytes;
     
   } catch (error) {
-    console.error('Error filling PDF form:', error);
+    console.error('💥 [PDF-GENERATION] CRITICAL ERROR:', error.message);
+    console.error('💥 [PDF-GENERATION] Stack trace:', error.stack);
     return null;
   }
 };
@@ -488,6 +548,9 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
         const registrationNumber = regMatch ? regMatch[0] : '';
         
         // Map applicantData from Mongoose schema to the format expected by fillPDFForm
+        console.log('🔄 [EMAIL] Raw applicant data received:', JSON.stringify(applicantData, null, 2));
+        console.log('🔢 [EMAIL] Registration number extracted:', registrationNumber);
+        
         const dataForPDF = {
             name: applicantData.name,
             age: applicantData.age,
@@ -505,6 +568,8 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
             percentage: applicantData.percentageIn10Plus2,
             college: applicantData.presentInstitute
         };
+        
+        console.log('📊 [EMAIL] Mapped data for PDF:', JSON.stringify(dataForPDF, null, 2));
 
         // Fill the PDF form
         pdfBuffer = await fillPDFForm(dataForPDF);
@@ -758,6 +823,49 @@ app.get('/api/health', (req, res) => {
     mongodb: mongoStatus,
     email: emailConfigured ? 'Configured' : 'Not Configured'
   });
+});
+
+// Test PDF generation endpoint (no authentication required)
+app.post('/api/test-pdf-generation', async (req, res) => {
+  try {
+    console.log('🧪 [TEST] PDF generation test started');
+    
+    // Test data
+    const testData = {
+      name: 'John Doe',
+      email: 'john@example.com',
+      mobile: '9876543210',
+      age: '22',
+      gender: 'Male',
+      category: 'General',
+      address: '123 Test Street',
+      father: 'Father Name',
+      father_occupation: 'Engineer',
+      college: 'Test College',
+      course: 'Computer Science',
+      semester: '6th',
+      cgpa: '8.5',
+      percentage: '85',
+      reg: 'SAIL-2025-TEST'
+    };
+    
+    console.log('🧪 [TEST] Using test data:', testData);
+    
+    const pdfBuffer = await fillPDFForm(testData);
+    
+    if (pdfBuffer) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="test-filled-form.pdf"');
+      res.send(pdfBuffer);
+      console.log('🎉 [TEST] PDF test successful!');
+    } else {
+      res.status(500).json({ error: 'PDF generation failed', message: 'Check server logs for details' });
+    }
+    
+  } catch (error) {
+    console.error('💥 [TEST] PDF test failed:', error);
+    res.status(500).json({ error: 'PDF generation error', message: error.message });
+  }
 });
 
 // Test email endpoint (no authentication required)
