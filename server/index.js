@@ -501,7 +501,7 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
       
       try {
         // Extract registration number from email content
-        const regMatch = html.match(/SAIL-\\d{4}-\\d{4}/);
+        const regMatch = html.match(/SAIL-\d{4}-\d{4}/);
         const registrationNumber = regMatch ? regMatch[0] : '';
         
         // Map applicantData from Mongoose schema to the format expected by fillPDFForm
@@ -651,7 +651,7 @@ app.post('/api/send-bulk-emails', authenticateToken, async (req, res) => {
             let pdfBuffer = null;
             
             try {
-                const regMatch = emailData.html ? emailData.html.match(/SAIL-\\d{4}-\\d{4}/) : null;
+                const regMatch = emailData.html ? emailData.html.match(/SAIL-\d{4}-\d{4}/) : null;
                 const registrationNumber = regMatch ? regMatch[0] : '';
                 
                             const dataForPDF = {
