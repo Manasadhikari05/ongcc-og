@@ -341,6 +341,63 @@ const coords = {
  * BULLETPROOF PDF GENERATION WITH MULTIPLE FALLBACKS
  * This function will work even if fonts fail or coordinates are wrong
  */
+// EMERGENCY FALLBACK: Create PDF from scratch if template missing
+const createEmergencyPDF = async (applicantData) => {
+  try {
+    console.log('🆘 [EMERGENCY] Creating PDF from scratch - no template needed');
+    
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([595, 842]); // A4 size
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    
+    // Header
+    page.drawText('ONGC INTERNSHIP APPLICATION FORM', {
+      x: 150, y: 800, size: 16, font: boldFont
+    });
+    
+    let yPos = 750;
+    const drawField = (label, value) => {
+      if (value) {
+        page.drawText(label + ': ' + String(value), {
+          x: 50, y: yPos, size: 12, font: font
+        });
+        yPos -= 25;
+      }
+    };
+    
+    // Draw all fields
+    drawField('Name', applicantData.name);
+    drawField('Registration Number', applicantData.reg);
+    drawField('Age', applicantData.age);
+    drawField('Gender', applicantData.gender);
+    drawField('Category', applicantData.category);
+    drawField('Mobile', applicantData.mobile);
+    drawField('Email', applicantData.email);
+    drawField('Address', applicantData.address);
+    drawField('Father/Mother Name', applicantData.father);
+    drawField('Father/Mother Occupation', applicantData.father_occupation);
+    drawField('Course', applicantData.course);
+    drawField('Semester', applicantData.semester);
+    drawField('CGPA', applicantData.cgpa);
+    drawField('10+2 Percentage', applicantData.percentage);
+    drawField('College', applicantData.college);
+    
+    // Timestamp
+    page.drawText('Generated: ' + new Date().toISOString(), {
+      x: 50, y: 50, size: 8, font: font
+    });
+    
+    const pdfBytes = await pdfDoc.save();
+    console.log('✅ [EMERGENCY] Emergency PDF created successfully!');
+    return pdfBytes;
+    
+  } catch (error) {
+    console.error('❌ [EMERGENCY] Emergency PDF failed:', error);
+    return null;
+  }
+};
+
 const fillPDFForm = async (applicantData) => {
   console.log('🎯 [PDF-GENERATION] STARTING BULLETPROOF PDF GENERATION');
   console.log('📊 [PDF-GENERATION] Input data:', JSON.stringify(applicantData, null, 2));
@@ -352,10 +409,10 @@ const fillPDFForm = async (applicantData) => {
     console.log('📁 [PDF-GENERATION] Template path:', templatePath);
     console.log('🔤 [PDF-GENERATION] Font path:', fontPath);
     
-    // Step 1: Check template file
+    // Step 1: Check template file - if missing, use emergency PDF
     if (!fs.existsSync(templatePath)) {
-      console.error('❌ [PDF-GENERATION] CRITICAL: Template PDF not found!');
-      return null;
+      console.error('❌ [PDF-GENERATION] Template PDF not found - using emergency PDF');
+      return await createEmergencyPDF(applicantData);
     }
     
     const templateStats = fs.statSync(templatePath);
