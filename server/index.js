@@ -739,8 +739,7 @@ const fillPDFForm = async (applicantData, registrationNumber) => {
 app.post('/api/send-email', authenticateToken, async (req, res) => {
   try {
     const { to, subject, html, text, attachTemplate, applicantData } = req.body;
-    console.log('
-=== EMAIL REQUEST START ===');
+    console.log('\n=== EMAIL REQUEST START ===');
     console.log('📧 Email sending request received:');
     console.log(`   📮 To: ${to}`);
     console.log(`   📝 Subject: ${subject}`);
@@ -869,8 +868,6 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
         } catch (fallbackError) {
           console.error('❌ Fallback also failed:', fallbackError);
         }
-      }
-    }
       }
     }
     
