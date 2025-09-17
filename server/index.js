@@ -341,197 +341,95 @@ const coords = {
  * BULLETPROOF PDF GENERATION WITH MULTIPLE FALLBACKS
  * This function will work even if fonts fail or coordinates are wrong
  */
-// EMERGENCY FALLBACK: Create PDF from scratch if template missing
-const createEmergencyPDF = async (applicantData) => {
-  try {
-    console.log('🆘 [EMERGENCY] Creating PDF from scratch - no template needed');
-    
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595, 842]); // A4 size
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    
-    // Header
-    page.drawText('ONGC INTERNSHIP APPLICATION FORM', {
-      x: 150, y: 800, size: 16, font: boldFont
-    });
-    
-    let yPos = 750;
-    const drawField = (label, value) => {
-      if (value) {
-        page.drawText(label + ': ' + String(value), {
-          x: 50, y: yPos, size: 12, font: font
-        });
-        yPos -= 25;
-      }
-    };
-    
-    // Draw all fields
-    drawField('Name', applicantData.name);
-    drawField('Registration Number', applicantData.reg);
-    drawField('Age', applicantData.age);
-    drawField('Gender', applicantData.gender);
-    drawField('Category', applicantData.category);
-    drawField('Mobile', applicantData.mobile);
-    drawField('Email', applicantData.email);
-    drawField('Address', applicantData.address);
-    drawField('Father/Mother Name', applicantData.father);
-    drawField('Father/Mother Occupation', applicantData.father_occupation);
-    drawField('Course', applicantData.course);
-    drawField('Semester', applicantData.semester);
-    drawField('CGPA', applicantData.cgpa);
-    drawField('10+2 Percentage', applicantData.percentage);
-    drawField('College', applicantData.college);
-    
-    // Timestamp
-    page.drawText('Generated: ' + new Date().toISOString(), {
-      x: 50, y: 50, size: 8, font: font
-    });
-    
-    const pdfBytes = await pdfDoc.save();
-    console.log('✅ [EMERGENCY] Emergency PDF created successfully!');
-    return pdfBytes;
-    
-  } catch (error) {
-    console.error('❌ [EMERGENCY] Emergency PDF failed:', error);
-    return null;
-  }
-};
-
+/**
+ * Fill ONGC template.pdf with applicant data using hardcoded coordinates
+ * This does EXACTLY what you want - fills YOUR template with data
+ */
 const fillPDFForm = async (applicantData) => {
-  console.log('🎯 [PDF-GENERATION] STARTING BULLETPROOF PDF GENERATION');
-  console.log('📊 [PDF-GENERATION] Input data:', JSON.stringify(applicantData, null, 2));
-  
   try {
+    console.log('🎯 FILLING ONGC TEMPLATE with data:', applicantData);
+    
     const templatePath = path.join(__dirname, 'templates', 'template.pdf');
     const fontPath = path.join(__dirname, 'templates', 'NotoSansDevanagari-Regular.ttf');
     
-    console.log('📁 [PDF-GENERATION] Template path:', templatePath);
-    console.log('🔤 [PDF-GENERATION] Font path:', fontPath);
-    
-    // Step 1: Check template file - if missing, use emergency PDF
+    // Must have template file
     if (!fs.existsSync(templatePath)) {
-      console.error('❌ [PDF-GENERATION] Template PDF not found - using emergency PDF');
-      return await createEmergencyPDF(applicantData);
+      console.error('❌ ONGC template.pdf NOT FOUND at:', templatePath);
+      return null;
     }
     
-    const templateStats = fs.statSync(templatePath);
-    console.log('✅ [PDF-GENERATION] Template found, size:', templateStats.size, 'bytes');
-
-    // Step 2: Read and load PDF
+    console.log('✅ ONGC template.pdf found');
+    
+    // Load the ONGC template
     const templateBytes = fs.readFileSync(templatePath);
     const pdfDoc = await PDFDocument.load(templateBytes);
-    const pages = pdfDoc.getPages();
+    const page = pdfDoc.getPages()[0];
     
-    console.log('✅ [PDF-GENERATION] PDF loaded successfully, pages:', pages.length);
-    
-    const page = pages[0];
-    const { width, height } = page.getSize();
-    console.log('📐 [PDF-GENERATION] Page size:', width, 'x', height);
-
-    // Step 3: Try to load custom font, fallback to standard if fails
+    // Load font (try custom first, fallback to Helvetica)
     let font;
     try {
       if (fs.existsSync(fontPath)) {
         const fontBytes = fs.readFileSync(fontPath);
         pdfDoc.registerFontkit(fontkit);
         font = await pdfDoc.embedFont(fontBytes);
-        console.log('✅ [PDF-GENERATION] Custom font loaded successfully');
+        console.log('✅ Custom font loaded');
       } else {
         font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        console.log('⚠️ [PDF-GENERATION] Using Helvetica fallback (no custom font)');
+        console.log('ℹ️ Using Helvetica font');
       }
     } catch (fontError) {
-      console.error('❌ [PDF-GENERATION] Font loading failed:', fontError.message);
       font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      console.log('⚠️ [PDF-GENERATION] Using Helvetica fallback due to error');
+      console.log('ℹ️ Font fallback to Helvetica');
     }
 
-    // Step 4: Enhanced text drawing with error handling
-    let fieldsDrawn = 0;
-    const drawField = (fieldName, value) => {
-      try {
-        if (!value || value === null || value === undefined) {
-          console.warn(`⚠️ [PDF-GENERATION] Skipping empty field: ${fieldName}`);
-          return;
-        }
-        
-        const coord = coords[fieldName];
-        if (!coord) {
-          console.warn(`⚠️ [PDF-GENERATION] No coordinates for field: ${fieldName}`);
-          return;
-        }
-
-        const [x, y] = coord;
-        const text = String(value).trim();
-        
-        if (!text) {
-          console.warn(`⚠️ [PDF-GENERATION] Empty text after trim: ${fieldName}`);
-          return;
-        }
-
-        // Draw text with error handling
-        page.drawText(text, {
-          x: x,
-          y: y,
-          size: 12,
-          font: font,
-          color: rgb(0, 0, 0),
-        });
-        
-        fieldsDrawn++;
-        console.log(`✅ [PDF-GENERATION] Drew field ${fieldName}: "${text}" at (${x}, ${y})`);
-        
-      } catch (drawError) {
-        console.error(`❌ [PDF-GENERATION] Failed to draw ${fieldName}:`, drawError.message);
-        // Continue with other fields even if one fails
+    // Fill template with data using your coordinates
+    const fillField = (fieldName, value) => {
+      if (!value) return;
+      
+      const coord = coords[fieldName];
+      if (!coord) {
+        console.warn(`No coordinates for ${fieldName}`);
+        return;
       }
+
+      const [x, y] = coord;
+      const text = String(value).trim();
+
+      page.drawText(text, {
+        x: x,
+        y: y,
+        size: 12,
+        font: font,
+        color: rgb(0, 0, 0),
+      });
+      
+      console.log(`✅ Filled ${fieldName}: "${text}" at (${x}, ${y})`);
     };
 
-    // Step 5: Draw all fields with comprehensive logging
-    console.log('🖊️ [PDF-GENERATION] Starting to fill form fields...');
-    
-    drawField('name', applicantData.name);
-    drawField('email', applicantData.email);
-    drawField('mobile', applicantData.mobile);
-    drawField('age', applicantData.age);
-    drawField('gender', applicantData.gender);
-    drawField('category', applicantData.category);
-    drawField('address', applicantData.address);
-    drawField('father', applicantData.father);
-    drawField('father_occupation', applicantData.father_occupation);
-    drawField('college', applicantData.college);
-    drawField('course', applicantData.course);
-    drawField('semester', applicantData.semester);
-    drawField('cgpa', applicantData.cgpa);
-    drawField('percentage', applicantData.percentage);
-    drawField('reg', applicantData.reg);
-    
-    console.log(`📊 [PDF-GENERATION] Fields drawn: ${fieldsDrawn}/15`);
-    
-    // Step 6: Add test text to verify PDF generation is working
-    try {
-      page.drawText('PDF GENERATED ON: ' + new Date().toISOString(), {
-        x: 50,
-        y: 50,
-        size: 8,
-        font: font,
-        color: rgb(0.5, 0.5, 0.5),
-      });
-      console.log('✅ [PDF-GENERATION] Added timestamp watermark');
-    } catch (stampError) {
-      console.warn('⚠️ [PDF-GENERATION] Could not add timestamp:', stampError.message);
-    }
+    // Fill all the fields in your ONGC template
+    fillField('name', applicantData.name);
+    fillField('email', applicantData.email);
+    fillField('mobile', applicantData.mobile);
+    fillField('age', applicantData.age);
+    fillField('gender', applicantData.gender);
+    fillField('category', applicantData.category);
+    fillField('address', applicantData.address);
+    fillField('father', applicantData.father);
+    fillField('father_occupation', applicantData.father_occupation);
+    fillField('college', applicantData.college);
+    fillField('course', applicantData.course);
+    fillField('semester', applicantData.semester);
+    fillField('cgpa', applicantData.cgpa);
+    fillField('percentage', applicantData.percentage);
+    fillField('reg', applicantData.reg);
 
-    // Step 7: Save PDF
-    const pdfBytes = await pdfDoc.save();
-    console.log(`🎉 [PDF-GENERATION] SUCCESS! Generated PDF with ${pdfBytes.length} bytes`);
-    
-    return pdfBytes;
+    // Return the filled ONGC template
+    const filledPDF = await pdfDoc.save();
+    console.log('🎉 ONGC template filled successfully!');
+    return filledPDF;
     
   } catch (error) {
-    console.error('💥 [PDF-GENERATION] CRITICAL ERROR:', error.message);
-    console.error('💥 [PDF-GENERATION] Stack trace:', error.stack);
+    console.error('❌ Error filling ONGC template:', error);
     return null;
   }
 };
