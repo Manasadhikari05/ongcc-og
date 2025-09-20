@@ -13,6 +13,9 @@ const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const morgan = require('morgan');
 
+// Determine auth backend
+const useMongoAuth = (process.env.AUTH_BACKEND || '').toLowerCase() === 'mongo';
+
 // SQL Database imports
 const {testConnection, syncDatabase} = require('./config/database');
 const {initializeSQLUsers} = require('./utils/authHelpers');
@@ -440,12 +443,6 @@ const fillPDFForm = async (applicantData, registrationNumber) => {
 // Email sending endpoint
 app.post('/api/send-email', authenticateToken, async (req, res) => {
     try {
-        res.json({
-            success: true,
-            message: 'first one',
-        });
-        return;
-
         const {to, subject, html, text, attachTemplate, applicantData} = req.body;
         console.log(applicantData);
         console.log('📧 Email sending request received:');
@@ -503,12 +500,6 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
         console.log('📎 Processing PDF attachment request...');
         // Add PDF template attachment if requested
         if (attachTemplate && applicantData) {
-            res.json({
-                success: true,
-                message: 'attachTemplate && applicantData',
-            });
-            return;
-
             let pdfBuffer = null;
 
             try {
@@ -541,7 +532,7 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
                 console.log('📊 [EMAIL] Mapped data for PDF:', JSON.stringify(dataForPDF, null, 2));
 
                 // Fill the PDF form
-                pdfBuffer = await fillPDFForm(dataForPDF);
+                pdfBuffer = await fillPDFForm(dataForPDF, registrationNumber);
             } catch (error) {
                 console.error('Error creating filled PDF:', error);
             }
@@ -684,7 +675,7 @@ app.post('/api/send-bulk-emails', authenticateToken, async (req, res) => {
                                 college: emailData.applicantData.presentInstitute
                             };
 
-                            pdfBuffer = await fillPDFForm(dataForPDF);
+                            pdfBuffer = await fillPDFForm(dataForPDF, registrationNumber);
 
                         } catch (error) {
                             console.error(`Error creating filled PDF for ${emailData.to}:`, error);
@@ -851,7 +842,7 @@ app.post('/api/test-pdf-generation', async (req, res) => {
 
         console.log('🧪 [TEST] Using test data:', testData);
 
-        const pdfBuffer = await fillPDFForm(testData);
+        const pdfBuffer = await fillPDFForm(testData, testData.reg);
 
         if (pdfBuffer) {
             res.setHeader('Content-Type', 'application/pdf');
